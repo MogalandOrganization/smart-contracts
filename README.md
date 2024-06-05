@@ -18,6 +18,9 @@ npm ci
 npx hardhat compile
 npx hardhat test
 npx hardhat node
+npx solc --include-path node_modules/ --base-path . contracts/MogaToken.sol --abi --verbose --output-dir abi/
+npx solc --include-path node_modules/ --base-path . contracts/MogaVesting.sol --abi --verbose --output-dir abi/
+npx solc --include-path node_modules/ --base-path . contracts/MogaStaking.sol --abi --verbose --output-dir abi/
 npx hardhat run --network sepolia scripts/deploy.js
 npx hardhat verify --network sepolia deployedTokenAddress "mogaAdminAddress" 1000000000
 npx hardhat verify --network sepolia deployedStakingAddress "mogaAdminAddress" "deployedTokenAddress"

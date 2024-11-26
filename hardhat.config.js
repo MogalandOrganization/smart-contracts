@@ -5,9 +5,11 @@ require("dotenv").config();
 module.exports = {
   solidity: "0.8.24",
   networks: {
-    sepolia: {
-      url: process.env.INFURA_API,
+    // EDUCHAIN / OPENCAMPUS TESTNET
+    opencampus: {
+      url: "https://rpc.open-campus-codex.gelato.digital/",
       accounts: [process.env.PRIVATE_KEY],
+      gasPrice: 1000000000,
     },
     // for mainnet
     base_mainnet: {
@@ -35,7 +37,7 @@ module.exports = {
     },
   },
   etherscan: {
-    apiKey: process.env.ETHERSCAN_API_KEY,
+    apiKey: "empty",
     customChains: [
       {
         network: "base_sepolia",
@@ -43,6 +45,14 @@ module.exports = {
         urls: {
           apiURL: "https://api-sepolia.basescan.org/api",
           browserURL: "sepolia.basescan.org",
+        },
+      },
+      {
+        network: "opencampus",
+        chainId: 656476,
+        urls: {
+          apiURL: "https://edu-chain-testnet.blockscout.com/api",
+          browserURL: "https://edu-chain-testnet.blockscout.com",
         },
       },
     ],

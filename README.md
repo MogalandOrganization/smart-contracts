@@ -33,6 +33,10 @@ npx hardhat verify --network sepolia 0xd27e8acd8d796ee459292675f3a554E9160aC88f 
 npx hardhat verify --network sepolia 0x51828028b1C5E10C2B5b5a2fBdCDF22eF3b14593 "0x0ba5550b728933f9c5cb81dea564e97020904ec1" "0xd27e8acd8d796ee459292675f3a554E9160aC88f"
 npx hardhat verify --network sepolia 0xD6648D8cf8e674bACF3d6E1A43290140F34E6827 "0x0ba5550b728933f9c5cb81dea564e97020904ec1" "0xd27e8acd8d796ee459292675f3a554E9160aC88f"
 
+### Special EDUchain/OPENCAMPUS consideration
+
+The etherscan API key has been set to "empty" in the hardhat conf since for testnet this is not required.
+
 # Notes
 
 - initial staking reward allocation (the staking contract must always have enough unassigned MOGA tokens to distribute staking rewards)

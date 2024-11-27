@@ -17,12 +17,14 @@ describe("TokenVesting", function () {
   before(async function () {
     Token = await ethers.getContractFactory("MogaToken");
     TokenVesting = await ethers.getContractFactory("MogaVesting");
+
+    [owner, addr1, addr2, ...addrs] = await ethers.getSigners();
   });
   beforeEach(async function () {
-    [owner, addr1, addr2, ...addrs] = await ethers.getSigners();
     testToken = await Token.deploy(owner, tokenCap);
     await testToken.waitForDeployment();
     testTokenAddress = await testToken.getAddress();
+    await testToken.connect(owner).mintTokens();
   });
 
   describe("Vesting", function () {

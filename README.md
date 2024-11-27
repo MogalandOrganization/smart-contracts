@@ -37,6 +37,10 @@ npx hardhat verify --network sepolia 0xD6648D8cf8e674bACF3d6E1A43290140F34E6827 
 
 The etherscan API key has been set to "empty" in the hardhat conf since for testnet this is not required.
 
+### Delayed TGE event
+
+The TGE event can be triggered at any time by the admin and mints the full token supply at once.
+
 # Notes
 
 - initial staking reward allocation (the staking contract must always have enough unassigned MOGA tokens to distribute staking rewards)

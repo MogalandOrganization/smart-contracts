@@ -14,9 +14,7 @@ contract MogaToken is ERC20Capped, ERC20Burnable, Ownable {
         ERC20("MogaToken", "Moga")
         ERC20Capped(cap * (10 ** decimals()))
         Ownable(initialOwner)
-    {
-        _mint(initialOwner, cap * (10 ** decimals())); // mint directly to mogaAdmin
-    }
+    {}
 
     // overriding internal function to enforce implementation from ERC20Capped
     function _update(
@@ -33,5 +31,10 @@ contract MogaToken is ERC20Capped, ERC20Burnable, Ownable {
                 revert ERC20ExceededCap(supply, maxSupply);
             }
         }
+    }
+
+    // delayed TGE event, only callable once due to fixed cap
+    function mintTokens() public onlyOwner {
+        _mint(owner(), 1000000000 * (10 ** decimals()));
     }
 }

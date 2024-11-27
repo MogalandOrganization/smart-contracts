@@ -19,6 +19,9 @@ describe("MogaToken contract", function () {
     [deployerAcc, mogaAdmin, addr1, addr2] = await hre.ethers.getSigners();
 
     mogaToken = await Token.deploy(mogaAdmin, tokenCap);
+    await mogaToken.waitForDeployment();
+
+    await mogaToken.connect(mogaAdmin).mintTokens();
   });
 
   describe("Deployment", function () {
@@ -34,6 +37,12 @@ describe("MogaToken contract", function () {
   });
 
   describe("Transactions", function () {
+    it("Should revert if admin tries to mint total cap more than once", async function () {
+      await expect(mogaToken.connect(mogaAdmin).mintTokens()).to.be.reverted;
+    });
+    it("Should revert if anyone tries to mint tokens after initial mint", async function () {
+      await expect(mogaToken.connect(addr1).mintTokens()).to.be.reverted;
+    });
     it("Should transfer tokens between accounts", async function () {
       // Transfer 50 tokens from mogaAdmin to addr1
       await mogaToken

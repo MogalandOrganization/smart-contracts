@@ -77,10 +77,14 @@ describe("MogaStaking contract", function () {
       await hre.ethers.getSigners();
 
     mogaToken = await Token.deploy(mogaAdmin, tokenCap, mogaAdmin);
+    await mogaToken.waitForDeployment();
     mogaTokenAddress = await mogaToken.getAddress();
 
     mogaStaking = await Staking.deploy(mogaAdmin, mogaTokenAddress, mogaAdmin);
+    await mogaStaking.waitForDeployment();
     mogaStakingAddress = await mogaStaking.getAddress();
+
+    await mogaToken.connect(mogaAdmin).mintTokens();
 
     // during post-deployment we transfer some amount of staking rewards as initial staking
     // rewards supply

@@ -11,7 +11,7 @@ module.exports = {
       accounts: [process.env.PRIVATE_KEY],
       gasPrice: 1000000000,
     },
-    // EDUCHAIN / OPENCAMPUS TESTNET
+    // EDUCHAIN / OPENCAMPUS MAINNET
     "edu-chain": {
       url: "https://rpc.edu-chain.raas.gelato.cloud",
       accounts: [process.env.PRIVATE_KEY],

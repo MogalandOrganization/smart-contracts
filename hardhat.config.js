@@ -11,7 +11,13 @@ module.exports = {
       accounts: [process.env.PRIVATE_KEY],
       gasPrice: 1000000000,
     },
-    // for mainnet
+    // EDUCHAIN / OPENCAMPUS TESTNET
+    "edu-chain": {
+      url: "https://rpc.edu-chain.raas.gelato.cloud",
+      accounts: [process.env.PRIVATE_KEY],
+      gasPrice: 1000000000,
+    },
+    // for base mainnet
     base_mainnet: {
       url: "https://mainnet.base.org",
       accounts: [process.env.PRIVATE_KEY],
@@ -53,6 +59,14 @@ module.exports = {
         urls: {
           apiURL: "https://edu-chain-testnet.blockscout.com/api",
           browserURL: "https://edu-chain-testnet.blockscout.com",
+        },
+      },
+      {
+        network: "edu-chain",
+        chainId: 41923,
+        urls: {
+          apiURL: "https://educhain.blockscout.com/api",
+          browserURL: "https://educhain.blockscout.com",
         },
       },
     ],

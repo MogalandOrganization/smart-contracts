@@ -1,3 +1,5 @@
+// cSpell:ignore educhain, opencampus, moga, basescan
+
 require("@nomicfoundation/hardhat-toolbox");
 require("dotenv").config();
 

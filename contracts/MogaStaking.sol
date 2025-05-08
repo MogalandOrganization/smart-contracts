@@ -285,6 +285,7 @@ contract MogaStaking is Ownable, Pausable, ReentrancyGuard, DSMath {
         );
         stakeIdToStakeOffer[stakeId] = _stakeOfferId;
         holderToStakeIds[msg.sender].push(stakeId);
+        stakeIds.push(stakeId);
 
         uint256 rewardRate = stakeOffers[_stakeOfferId].rate;
         uint256 duration = stakeOffers[_stakeOfferId].lockupDuration;
@@ -321,6 +322,7 @@ contract MogaStaking is Ownable, Pausable, ReentrancyGuard, DSMath {
         );
         stakeIdToStakeOffer[stakeId] = _stakeOfferId;
         holderToStakeIds[_beneficiary].push(stakeId);
+        stakeIds.push(stakeId);
 
         uint256 rewardRate = stakeOffers[_stakeOfferId].rate;
         uint256 duration = stakeOffers[_stakeOfferId].lockupDuration;
@@ -386,7 +388,7 @@ contract MogaStaking is Ownable, Pausable, ReentrancyGuard, DSMath {
      *
      */
     function _rewards(uint256 _stakeId) internal view returns (uint256) {
-        // make sure stake is only calculated against commited timestamp
+        // make sure stake is only calculated against committed timestamp
         Stake storage stake = stakes[_stakeId];
 
         uint256 principle = stake.principle;

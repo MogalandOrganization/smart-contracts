@@ -1,7 +1,22 @@
+# cSpell:ignore moga
+
+PUBLIC_KEY=
 PRIVATE_KEY=
+
 ALCHEMY_API=
+
 INFURA_API=
+
 ETHERSCAN_API_KEY=
 
+# BLOCK_EXPLORER_URL=https://educhain.blockscout.com
+
+BLOCK_EXPLORER_URL=https://edu-chain-testnet.blockscout.com
+
 # CONTRACT attributes configs
+
 TOTAL_SUPPLY=
+
+MOGA_CONTRACT=
+VESTING_CONTRACT=
+STAKING_CONTRACT=

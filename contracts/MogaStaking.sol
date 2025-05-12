@@ -361,12 +361,16 @@ contract MogaStaking is Ownable, Pausable, ReentrancyGuard, DSMath {
         uint256 fee = stakeOffers[stakeIdToStakeOffer[_stakeId]].fee;
         if (fee > 0) {
             uint256 diff = balance - initialStake;
-            uint256 feeAmount = (diff * (100 - fee)) / 1000;
-            afterFee = balance - feeAmount; //
+            // Calculate fee amount correctly - fee is a percentage of interest (diff)
+            uint256 feeAmount = (diff * fee) / 100;
+            afterFee = balance - feeAmount;
 
             // burn half of fee
             uint256 burnAmount = feeAmount / 2;
-            token.burn(burnAmount);
+            // Add a check to prevent burning 0 tokens if feeAmount is very small
+            if (burnAmount > 0) {
+                token.burn(burnAmount);
+            }
         } else afterFee = balance;
 
         // we only transfer amount afterFees and 50% of that remains inaccessible in staking pool
@@ -486,12 +490,16 @@ contract MogaStaking is Ownable, Pausable, ReentrancyGuard, DSMath {
 
         if (flexibleFee > 0) {
             uint256 diff = balance - initialStake;
-            uint256 feeAmount = (diff * (100 - flexibleFee)) / 1000;
-            afterFee = balance - feeAmount; //
+            // Calculate fee amount correctly - fee is a percentage of interest (diff)
+            uint256 feeAmount = (diff * flexibleFee) / 100;
+            afterFee = balance - feeAmount;
 
             // burn half of fee
             burnAmount = feeAmount / 2;
-            token.burn(burnAmount);
+            // Add a check to prevent burning 0 tokens if feeAmount is very small
+            if (burnAmount > 0) {
+                token.burn(burnAmount);
+            }
         } else afterFee = balance;
 
         flexibleBalanceOf[_beneficiary] = afterFee;

@@ -340,6 +340,124 @@ describe('MogaStaking contract', function () {
             // );
         });
 
+        it('short term staking can be unstaked after short lockup time (2 hours)', async function () {
+            // Define a short lockup period (2 hours in seconds)
+            const twoHourMaturity = 2 * 60 * 60;
+
+            // Create stake offer with short lockup duration
+            await mogaStaking
+                .connect(mogaAdmin)
+                .createStakeOffer(hre.ethers.parseEther(rate.toString()), 10, twoHourMaturity.toString(), false);
+
+            // Stake tokens
+            await expect(mogaStaking.connect(addr1).stakeFixedTerm(1, hre.ethers.parseEther(stakeAmount)))
+                .to.changeTokenBalances(
+                    mogaToken,
+                    [addr1, mogaStaking],
+                    [hre.ethers.parseEther(stakeAmount) * -1n, hre.ethers.parseEther(stakeAmount)]
+                );
+
+            // Check stake details to confirm stake was created properly
+            let [stakeOfferId, principle, created, owner] = await mogaStaking.getStakeDetails(1);
+            expect(stakeOfferId).to.equal(1);
+            expect(principle).to.equal(hre.ethers.parseEther(stakeAmount));
+            expect(owner).to.equal(addr1.address);
+
+            // Advance time just past the lockup period
+            await helpers.time.increase(twoHourMaturity + 1);
+
+            // Log reward amount before unstaking to check calculated interest
+            const rewardAmount = await mogaStaking.rewards(1);
+            console.log("Reward amount after short period:", hre.ethers.formatEther(rewardAmount));
+
+            // Record token balance before unstaking
+            const beforeBalance = await mogaToken.balanceOf(addr1.address);
+
+            // Should be able to unstake after the short period
+            await mogaStaking.connect(addr1).unStakeFixedTerm(1);
+
+            // Record token balance after unstaking and calculate difference
+            const afterBalance = await mogaToken.balanceOf(addr1.address);
+            const returnedAmount = afterBalance - beforeBalance;
+            console.log("Returned amount after unstaking:", hre.ethers.formatEther(returnedAmount));
+
+            // Verify stake is gone from contract
+            const afterUnstake = await mogaStaking.getStakeDetails(1);
+            expect(afterUnstake[1]).to.equal(0); // Principle should be 0 after unstaking
+
+            // Verify total staked has decreased
+            expect(await mogaStaking.totalStaked()).to.equal(0);
+        });
+
+        it('verifies fee calculation logic for short term stakes with minimal interest', async function () {
+            // Setup: Use higher interest rate to make calculation more visible
+            const highRate = new BN(0.5); // 50% interest rate
+            const shortPeriod = 60 * 60; // 1 hour
+
+            // Create stake offer with high rate and very short lockup
+            await mogaStaking
+                .connect(mogaAdmin)
+                .createStakeOffer(hre.ethers.parseEther(highRate.toString()), 10, shortPeriod.toString(), false);
+
+            // Stake tokens - need to use ID 1 since that's the ID of the offer we just created
+            await mogaStaking.connect(addr1).stakeFixedTerm(1, hre.ethers.parseEther(stakeAmount));
+
+            // Advance time just past the lockup period
+            await helpers.time.increase(shortPeriod + 1);
+
+            // Get reward amount
+            const initialStake = hre.ethers.parseEther(stakeAmount);
+            const rewardBefore = await mogaStaking.rewards(1);
+            console.log("Initial stake amount:", hre.ethers.formatEther(initialStake));
+            console.log("Total reward amount (with interest):", hre.ethers.formatEther(rewardBefore));
+
+            // Calculate expected interest and fee manually
+            const interest = rewardBefore - initialStake;
+            console.log("Interest earned:", hre.ethers.formatEther(interest));
+
+            // Get total supply before unstaking
+            const totalSupplyBefore = await mogaToken.totalSupply();
+            console.log("Total token supply before unstaking:", hre.ethers.formatEther(totalSupplyBefore));
+
+            // Get user balance before unstaking
+            const balanceBefore = await mogaToken.balanceOf(addr1.address);
+
+            // Unstake
+            await mogaStaking.connect(addr1).unStakeFixedTerm(1);
+
+            // Get user balance after unstaking
+            const balanceAfter = await mogaToken.balanceOf(addr1.address);
+            const amountReceived = balanceAfter - balanceBefore;
+            console.log("Amount received after unstaking:", hre.ethers.formatEther(amountReceived));
+
+            // Get total supply after unstaking to check burn amount
+            const totalSupplyAfter = await mogaToken.totalSupply();
+            console.log("Total token supply after unstaking:", hre.ethers.formatEther(totalSupplyAfter));
+            const burnAmount = totalSupplyBefore - totalSupplyAfter;
+            console.log("Amount burned during unstaking:", hre.ethers.formatEther(burnAmount));
+
+            // Verify fee calculation logic
+            if (interest > 0) {
+                // Updated contract logic calculates fee as: feeAmount = (diff * fee) / 100
+                // For a fee of 10%, this means (interest * 10) / 100 = interest * 0.1
+                // So fee is correctly 10% of interest
+                const expectedFeeAmount = (interest * 10n) / 100n;
+                const expectedBurnAmount = expectedFeeAmount / 2n;
+
+                console.log("Expected fee amount:", hre.ethers.formatEther(expectedFeeAmount));
+                console.log("Expected burn amount:", hre.ethers.formatEther(expectedBurnAmount));
+
+                // Check if burn amount matches expected
+                expect(burnAmount).to.be.closeTo(expectedBurnAmount, 1000000n); // Allow small precision error
+
+                // Verify amount received is correct (initial + interest - fee)
+                const expectedReceived = initialStake + interest - expectedFeeAmount;
+                expect(amountReceived).to.be.closeTo(expectedReceived, 1000000n); // Allow small precision error
+            } else {
+                console.log("No interest earned in this short period");
+            }
+        });
+
         it('beneficiaries can unstake after lockup period', async function () {
             await mogaStaking
                 .connect(mogaAdmin)
@@ -543,7 +661,8 @@ describe('MogaStaking contract', function () {
         });
 
         describe('flexible Compound', function () {
-            let reward = hre.ethers.parseEther('4.665669918103188919');
+            // Updated reward value for the new fee calculation
+            let reward = hre.ethers.parseEther('4.614398820102054975');
 
             this.beforeEach(async function () {
                 await mogaStaking.connect(addr1).stakeFlexible(hre.ethers.parseEther(stakeAmount));
@@ -611,9 +730,9 @@ describe('MogaStaking contract', function () {
             });
 
             it('Should change token balances', async function () {
-                let stakePlusInterestAfterFees = hre.ethers.parseEther('104.896389859108291667');
+                let stakePlusInterestAfterFees = hre.ethers.parseEther('104.870754310107724695');
 
-                let withdrawBalance = hre.ethers.parseEther('104.665669918103188919');
+                let withdrawBalance = hre.ethers.parseEther('104.614398820102054975');
 
                 await expect(mogaStaking.connect(addr1).withdrawFlexible()).to.changeTokenBalances(
                     mogaToken,

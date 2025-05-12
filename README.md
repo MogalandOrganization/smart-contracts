@@ -1,3 +1,5 @@
+# cSpell:ignore opencampus moga
+
 # Moga Token
 
 Token name: $MOGA
@@ -21,10 +23,27 @@ npx hardhat node
 npx solc --include-path node_modules/ --base-path . contracts/MogaToken.sol --abi --verbose --output-dir abi/
 npx solc --include-path node_modules/ --base-path . contracts/MogaVesting.sol --abi --verbose --output-dir abi/
 npx solc --include-path node_modules/ --base-path . contracts/MogaStaking.sol --abi --verbose --output-dir abi/
-npx hardhat run --network sepolia scripts/deploy.js
-npx hardhat verify --network sepolia deployedTokenAddress "mogaAdminAddress" 1000000000
-npx hardhat verify --network sepolia deployedStakingAddress "mogaAdminAddress" "deployedTokenAddress"
-npx hardhat verify --network sepolia deployedVestingAddress "mogaAdminAddress" "deployedTokenAddress"
+npx hardhat run --network opencampus scripts/deploy.js
+npx hardhat verify --network opencampus deployedTokenAddress "mogaAdminAddress" 1000000000
+npx hardhat verify --network opencampus deployedStakingAddress "mogaAdminAddress" "deployedTokenAddress"
+npx hardhat verify --network opencampus deployedVestingAddress "mogaAdminAddress" "deployedTokenAddress"
+```
+
+```shell
+# Update .env file with PUBLIC_KEY, PRIVATE_KEY, ALCHEMY_API, INFURA_API, ETHERSCAN_API_KEY
+HARDHAT_NETWORK=opencampus node scripts/1-deploy.js
+# Update .env file with MOGA_CONTRACT, VESTING_CONTRACT, STAKING_CONTRACT
+HARDHAT_NETWORK=opencampus node scripts/2-trigger-TGE.js
+HARDHAT_NETWORK=opencampus node scripts/3-transfer-to-vesting.js [amount]
+HARDHAT_NETWORK=opencampus node scripts/4-create-vesting-schedule.js [recipient-wallet-address] [amount] [non-revocable / anything-else]
+HARDHAT_NETWORK=opencampus node scripts/5-transfer-tokens.js [recipient-wallet-address] [amount]
+HARDHAT_NETWORK=opencampus node scripts/6-transfer-to-staking.js [amount]
+HARDHAT_NETWORK=opencampus node scripts/7-create-staking-offer.js [rate] [fee] [lockup duration] [true / anything-else]
+HARDHAT_NETWORK=opencampus node scripts/8-discontinue-staking-offer.js [offer-id]
+```
+
+```shell
+npx hardhat run --network edu-chain scripts/deploy.js
 ```
 
 ### Deployment example using dev wallet
@@ -43,16 +62,16 @@ The TGE event can be triggered at any time by the admin and mints the full token
 
 # Notes
 
-- initial staking reward allocation (the staking contract must always have enough unassigned MOGA tokens to distribute staking rewards)
-- https://www.immunebytes.com/blog/precision-loss-vulnerability-in-solidity-a-deep-technical-dive/
+-   initial staking reward allocation (the staking contract must always have enough unassigned MOGA tokens to distribute staking rewards)
+-   https://www.immunebytes.com/blog/precision-loss-vulnerability-in-solidity-a-deep-technical-dive/
 
-API documentation can be found here: https://tradelite.atlassian.net/wiki/spaces/MGAPP/pages/13041631233/Blockchain+Smart+Contracts
+API documentation can be found here: https://www.notion.so/Blockchain-Smart-Contracts-1e36853244c380f3b7a0fc2b3cd409c6?pvs=4
 
 The vesting contract is taken from https://github.com/AbdelStark/token-vesting-contracts and has been processed in the following ways:
 
-- Updated to latest solidity
-- converted to use OpenZeppelin
-- modified from a constructor POV to enable automatic transfer of ownership to mogaAdmin (@Dom, please check how tio attribute this accordingly)
+-   Updated to latest solidity
+-   converted to use OpenZeppelin
+-   modified from a constructor POV to enable automatic transfer of ownership to mogaAdmin (@Dom, please check how tio attribute this accordingly)
 
 Interest calculation taken from https://github.com/wolflo/solidity-interest-helper/tree/master
 
@@ -66,6 +85,6 @@ The following transactions need to be executed to set everything up and running:
 
 Tracy:
 
-- Setup initial staking offers (2)
-- transfer a pre-determined initial staking reward allocation (e.g. 1 million MOGA) to staking contract
-- Setup team and investor vesting
+-   Setup initial staking offers (2)
+-   transfer a pre-determined initial staking reward allocation (e.g. 1 million MOGA) to staking contract
+-   Setup team and investor vesting

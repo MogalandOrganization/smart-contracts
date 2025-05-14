@@ -63,19 +63,23 @@ contract MogaStaking is Ownable, Pausable, ReentrancyGuard, DSMath {
     /**
      * @dev
      * variables related to the flexible staking mechanism
-     *
+     * Using time-weighted accumulators for efficient reward tracking
      */
-    uint256 flexibleRewardRate = 0;
-    uint256 flexibleFee = 0;
+    uint256 public flexibleRewardRate = 0;     // Current rate as RAY value
+    uint256 public flexibleFee = 0;            // Current fee percentage
+    uint256 public rewardIndex;                // Global accumulator for rewards (starts at RAY = 10^27)
+    uint256 public lastIndexUpdateTimestamp;   // Last time rewardIndex was updated
 
-    mapping(address => uint256) public flexibleBalanceOf;
-    mapping(address => uint256) public flexibleLastUpdated;
+    mapping(address => uint256) public flexibleBalanceOf;      // User's staked balance
+    mapping(address => uint256) public userRewardIndex;        // User's snapshot of rewardIndex
+    mapping(address => uint256) public userUnclaimedRewards;   // User's unclaimed rewards
 
     event FlexibleRewardRateModified(uint256 _newRate);
     event FlexibleFeeModified(uint256 _newFee);
     event DepositFlexible(address _address, uint256 _amount);
     event WithdrawFlexible(address _address, uint256 _amount);
     event CompoundFlexible(address _address, uint256 _amount);
+    event RewardIndexUpdated(uint256 _newIndex);
 
     error FlexibleRewardRateInvalid(uint256 _rate);
     error FlexibleFeeInvalid(uint256 _fee);
@@ -83,6 +87,9 @@ contract MogaStaking is Ownable, Pausable, ReentrancyGuard, DSMath {
 
     constructor(address initialOwner, address token_) Ownable(initialOwner) {
         token = ERC20Burnable(token_);
+        // Initialize rewardIndex to RAY (10^27) which represents 1.0 in ray format
+        rewardIndex = wadToRay(1 ether);
+        lastIndexUpdateTimestamp = block.timestamp;
     }
 
     //// Fixed point scale factors
@@ -168,10 +175,47 @@ contract MogaStaking is Ownable, Pausable, ReentrancyGuard, DSMath {
             );
     }
 
+    /**
+     * @dev Updates the global rewardIndex based on time elapsed and current rate
+     * This is called whenever users interact with the contract or rates change
+     */
+    function updateRewardIndex() internal {
+        uint256 currentTime = block.timestamp;
+        if (currentTime > lastIndexUpdateTimestamp && flexibleRewardRate > 0) {
+            uint256 timeDelta = currentTime - lastIndexUpdateTimestamp;
+            // Calculate new index with compound interest formula
+            rewardIndex = rmul(rewardIndex, rpow(flexibleRewardRate, timeDelta));
+            lastIndexUpdateTimestamp = currentTime;
+            emit RewardIndexUpdated(rewardIndex);
+        }
+    }
+
+    /**
+     * @dev Updates a user's rewards based on their balance and the global index
+     * Stores the rewards in the userUnclaimedRewards mapping
+     */
+    function updateUserRewards(address _user) internal {
+        // First update the global index
+        updateRewardIndex();
+        
+        // If user has a balance and has a valid index snapshot
+        if (flexibleBalanceOf[_user] > 0 && userRewardIndex[_user] > 0) {
+            // Calculate new rewards using the index ratio
+            uint256 newRewards = rmul(flexibleBalanceOf[_user], rdiv(rewardIndex, userRewardIndex[_user])) - flexibleBalanceOf[_user];
+            // Add to unclaimed rewards
+            userUnclaimedRewards[_user] += newRewards;
+        }
+        
+        // Update user's index snapshot to current
+        userRewardIndex[_user] = rewardIndex;
+    }
+
     function setNewFlexibleRewardRate(uint256 _rate) public onlyOwner {
         if (_rate <= 0) {
             revert FlexibleRewardRateInvalid(_rate);
         }
+        // Update index with old rate before changing
+        updateRewardIndex();
         flexibleRewardRate = _yearlyRateToRay(_rate);
         emit FlexibleRewardRateModified(flexibleRewardRate);
     }
@@ -445,84 +489,139 @@ contract MogaStaking is Ownable, Pausable, ReentrancyGuard, DSMath {
         return token.balanceOf(address(this)) - totalStaked;
     }
 
-    // flexible staking logic
-    function stakeFlexible(uint256 amount_) external {
-        _stakeFlexible(amount_);
-    }
-
-    function _stakeFlexible(uint256 amount_) internal {
-        token.safeTransferFrom(msg.sender, address(this), amount_);
-        flexibleBalanceOf[msg.sender] += amount_;
-        flexibleLastUpdated[msg.sender] = block.timestamp;
-        totalStaked += amount_;
-        emit DepositFlexible(msg.sender, amount_);
-    }
-
-    function rewardsFlexible(address address_) external view returns (uint256) {
-        return _rewardsFlexible(address_);
-    }
-
-    function _rewardsFlexible(
-        address address_
-    ) internal view returns (uint256) {
-        uint256 duration = block.timestamp - flexibleLastUpdated[address_];
-        uint256 principle = flexibleBalanceOf[address_];
-
-        return _accrueInterest(principle, flexibleRewardRate, duration);
+    // flexible staking logic with time-weighted accumulator system
+    /**
+     * @dev Get current rewards for a user without modifying state
+     * Calculates using the current rewardIndex and the user's snapshot
+     */
+    function rewardsFlexible(address _user) external view returns (uint256) {
+        // Get the current index value (if it needs updating)
+        uint256 currentIndex = rewardIndex;
+        if (block.timestamp > lastIndexUpdateTimestamp && flexibleRewardRate > 0) {
+            uint256 timeDelta = block.timestamp - lastIndexUpdateTimestamp;
+            currentIndex = rmul(rewardIndex, rpow(flexibleRewardRate, timeDelta));
+        }
+        
+        // If user has no balance or no index yet, return 0
+        if (flexibleBalanceOf[_user] == 0 || userRewardIndex[_user] == 0) {
+            return 0;
+        }
+        
+        // Calculate new rewards based on index ratio
+        uint256 newRewards = rmul(flexibleBalanceOf[_user], rdiv(currentIndex, userRewardIndex[_user])) - flexibleBalanceOf[_user];
+        
+        // Add any previously unclaimed rewards
+        return userUnclaimedRewards[_user] + newRewards;
     }
 
     /**
-     * @dev Anyone can execute the compoundFlexible method to enable automatic backend systems
-     * Prior to modifying the flexibleRewardRate it is required that backend executes compounding on
-     * behalf of all active flexible stakers
-     * Since the rewardRate and fee are both flexible, every compounding needs to calculate and burn fees accordingly
+     * @dev Stake tokens in the flexible staking system
+     */
+    function stakeFlexible(uint256 _amount) external whenNotPaused nonReentrant {
+        require(_amount > 0, "Cannot stake zero amount");
+        
+        // Update user's rewards first (if they already have a stake)
+        updateUserRewards(msg.sender);
+        
+        // Transfer tokens from user
+        token.safeTransferFrom(msg.sender, address(this), _amount);
+        
+        // Update user's balance
+        flexibleBalanceOf[msg.sender] += _amount;
+        
+        // If this is user's first stake, set their index snapshot
+        if (userRewardIndex[msg.sender] == 0) {
+            userRewardIndex[msg.sender] = rewardIndex;
+        }
+        
+        // Update total staked amount
+        totalStaked += _amount;
+        
+        emit DepositFlexible(msg.sender, _amount);
+    }
+
+    /**
+     * @dev Compound rewards into principal for a user
+     * Can be called by anyone to enable automation
      */
     function compoundFlexible(address _beneficiary) external nonReentrant {
-        _compoundFlexible(_beneficiary);
-    }
-
-    function _compoundFlexible(address _beneficiary) internal {
-        uint256 balance = _rewardsFlexible(_beneficiary);
-        uint256 initialStake = flexibleBalanceOf[_beneficiary];
-
-        uint256 afterFee;
-        uint256 burnAmount;
-
-        if (flexibleFee > 0) {
-            uint256 diff = balance - initialStake;
-            // Calculate fee amount correctly - fee is a percentage of interest (diff)
-            uint256 feeAmount = (diff * flexibleFee) / 100;
-            afterFee = balance - feeAmount;
-
-            // burn half of fee
-            burnAmount = feeAmount / 2;
-            // Add a check to prevent burning 0 tokens if feeAmount is very small
-            if (burnAmount > 0) {
-                token.burn(burnAmount);
+        // First update the user's rewards
+        updateUserRewards(_beneficiary);
+        
+        uint256 rewards = userUnclaimedRewards[_beneficiary];
+        if (rewards > 0) {
+            uint256 afterFee;
+            
+            // Apply fee if applicable
+            if (flexibleFee > 0) {
+                uint256 feeAmount = (rewards * flexibleFee) / 100;
+                uint256 burnAmount = feeAmount / 2;
+                
+                // Burn half the fee
+                if (burnAmount > 0) {
+                    token.burn(burnAmount);
+                }
+                
+                afterFee = rewards - feeAmount;
+            } else {
+                afterFee = rewards;
             }
-        } else afterFee = balance;
-
-        flexibleBalanceOf[_beneficiary] = afterFee;
-        flexibleLastUpdated[_beneficiary] = block.timestamp;
-        totalStaked -= initialStake;
-        totalStaked += afterFee;
-        emit CompoundFlexible(_beneficiary, afterFee);
+            
+            // Add rewards to principal
+            flexibleBalanceOf[_beneficiary] += afterFee;
+            
+            // Reset unclaimed rewards
+            userUnclaimedRewards[_beneficiary] = 0;
+            
+            // Update total staked amount
+            totalStaked += afterFee;
+            
+            emit CompoundFlexible(_beneficiary, afterFee);
+        }
     }
 
     /**
-     * @dev withdrawing the full flexible staked amount
-     * resetting flexibleBalance to zero
+     * @dev Withdraw all tokens from flexible staking
      */
     function withdrawFlexible() external nonReentrant {
         if (flexibleBalanceOf[msg.sender] <= 0) {
             revert FlexibleStakeBalanceIsZero(msg.sender);
         }
 
-        _compoundFlexible(msg.sender);
-        uint256 amount = flexibleBalanceOf[msg.sender];
+        // Update the user's rewards first
+        updateUserRewards(msg.sender);
+        
+        uint256 principal = flexibleBalanceOf[msg.sender];
+        uint256 rewards = userUnclaimedRewards[msg.sender];
+        uint256 afterFee;
+        
+        // Apply fee to rewards if applicable
+        if (rewards > 0 && flexibleFee > 0) {
+            uint256 feeAmount = (rewards * flexibleFee) / 100;
+            uint256 burnAmount = feeAmount / 2;
+            
+            // Burn half the fee
+            if (burnAmount > 0) {
+                token.burn(burnAmount);
+            }
+            
+            afterFee = rewards - feeAmount;
+        } else {
+            afterFee = rewards;
+        }
+        
+        uint256 totalAmount = principal + afterFee;
+        
+        // Reset user state
         flexibleBalanceOf[msg.sender] = 0;
-        totalStaked -= amount;
-        token.safeTransfer(msg.sender, amount);
-        emit WithdrawFlexible(msg.sender, amount);
+        userUnclaimedRewards[msg.sender] = 0;
+        
+        // Update total staked amount
+        totalStaked -= principal;
+        
+        // Transfer tokens to user
+        token.safeTransfer(msg.sender, totalAmount);
+        
+        emit WithdrawFlexible(msg.sender, totalAmount);
     }
 }

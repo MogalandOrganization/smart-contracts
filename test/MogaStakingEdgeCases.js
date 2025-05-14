@@ -319,4 +319,101 @@ describe('MogaStaking Edge Cases', function () {
             expect(difference).to.be.gt(0);
         });
     });
+    
+    // New tests for the time-weighted accumulator system
+    describe('Rate Change Scenarios', function() {
+        it('should calculate rewards correctly across multiple rate changes', async function() {
+            // Stake a significant amount
+            await mogaStaking.connect(addr1).stakeFlexible(hre.ethers.parseEther('1000'));
+            
+            // Initial rate is already set to 5%
+            console.log('Starting with 5% rate');
+            
+            // First period - 3 months at 5%
+            await helpers.time.increase(86400 * 90); // 90 days
+            
+            // Check rewards after first period
+            let rewards1 = await mogaStaking.rewardsFlexible(addr1.address);
+            console.log(`Rewards after 90 days at 5%: ${hre.ethers.formatEther(rewards1 - hre.ethers.parseEther('1000'))}`);
+            
+            // Change rate to 3%
+            await mogaStaking.connect(mogaAdmin).setNewFlexibleRewardRate(hre.ethers.parseEther('0.03'));
+            console.log('Rate changed to 3%');
+            
+            // Second period - 6 months at 3%
+            await helpers.time.increase(86400 * 180); // 180 days
+            
+            // Check rewards after second period
+            let rewards2 = await mogaStaking.rewardsFlexible(addr1.address);
+            console.log(`Total rewards after additional 180 days at 3%: ${hre.ethers.formatEther(rewards2 - hre.ethers.parseEther('1000'))}`);
+            
+            // Change rate to 7%
+            await mogaStaking.connect(mogaAdmin).setNewFlexibleRewardRate(hre.ethers.parseEther('0.07'));
+            console.log('Rate changed to 7%');
+            
+            // Third period - 3 months at 7%
+            await helpers.time.increase(86400 * 90); // 90 days
+            
+            // Check final rewards
+            let rewards3 = await mogaStaking.rewardsFlexible(addr1.address);
+            console.log(`Total rewards after additional 90 days at 7%: ${hre.ethers.formatEther(rewards3 - hre.ethers.parseEther('1000'))}`);
+            
+            // Verify rewards increased after each period
+            expect(rewards2).to.be.gt(rewards1);
+            expect(rewards3).to.be.gt(rewards2);
+            
+            // Withdraw to confirm system works end-to-end
+            await mogaStaking.connect(addr1).withdrawFlexible();
+            
+            const finalUserBalance = await mogaToken.balanceOf(addr1.address);
+            console.log(`Final user balance after withdrawal: ${hre.ethers.formatEther(finalUserBalance)}`);
+            
+            // User should receive more than they initially staked
+            expect(finalUserBalance).to.be.gt(hre.ethers.parseEther('10000'));
+        });
+        
+        it('should handle concurrent users with different start times correctly', async function() {
+            // First user starts staking
+            await mogaStaking.connect(addr1).stakeFlexible(hre.ethers.parseEther('1000'));
+            
+            // Advance 30 days
+            await helpers.time.increase(86400 * 30);
+            
+            // Second user starts staking
+            await mogaStaking.connect(addr2).stakeFlexible(hre.ethers.parseEther('1000'));
+            
+            // Advance 30 more days
+            await helpers.time.increase(86400 * 30);
+            
+            // Third user starts staking
+            await mogaStaking.connect(addr3).stakeFlexible(hre.ethers.parseEther('1000'));
+            
+            // Change rate
+            await mogaStaking.connect(mogaAdmin).setNewFlexibleRewardRate(hre.ethers.parseEther('0.08'));
+            
+            // Advance 60 more days
+            await helpers.time.increase(86400 * 60);
+            
+            // Get rewards for all users
+            const rewards1 = await mogaStaking.rewardsFlexible(addr1.address);
+            const rewards2 = await mogaStaking.rewardsFlexible(addr2.address);
+            const rewards3 = await mogaStaking.rewardsFlexible(addr3.address);
+            
+            console.log(`User 1 (120 days total): ${hre.ethers.formatEther(rewards1)}`);
+            console.log(`User 2 (90 days total): ${hre.ethers.formatEther(rewards2)}`);
+            console.log(`User 3 (60 days total): ${hre.ethers.formatEther(rewards3)}`);
+            
+            const initialStake = hre.ethers.parseEther('1000');
+            
+            // User 1 should have more rewards than User 2, who should have more than User 3
+            expect(rewards1).to.be.gt(rewards2);
+            expect(rewards2).to.be.gt(rewards3);
+            
+            // Just verify that users have earned interest, not that total is greater than initial stake 
+            // (since we're just looking at interest calculation, not principal + interest)
+            expect(Number(hre.ethers.formatEther(rewards1))).to.be.gt(13);
+            expect(Number(hre.ethers.formatEther(rewards2))).to.be.gt(10);
+            expect(Number(hre.ethers.formatEther(rewards3))).to.be.gt(5);
+        });
+    });
 });

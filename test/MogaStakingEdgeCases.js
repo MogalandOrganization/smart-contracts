@@ -334,7 +334,13 @@ describe('MogaStaking Edge Cases', function () {
             
             // Check rewards after first period
             let rewards1 = await mogaStaking.rewardsFlexible(addr1.address);
-            console.log(`Rewards after 90 days at 5%: ${hre.ethers.formatEther(rewards1 - hre.ethers.parseEther('1000'))}`);
+            const initialStake = hre.ethers.parseEther('1000');
+            const stake1 = await mogaStaking.flexibleBalanceOf(addr1.address);
+            
+            console.log(`After 90 days at 5%:`);
+            console.log(`- User stake balance: ${hre.ethers.formatEther(stake1)}`);
+            console.log(`- Interest earned: ${hre.ethers.formatEther(rewards1)}`); 
+            console.log(`- Total value: ${hre.ethers.formatEther(stake1 + rewards1)}`);
             
             // Change rate to 3%
             await mogaStaking.connect(mogaAdmin).setNewFlexibleRewardRate(hre.ethers.parseEther('0.03'));
@@ -345,7 +351,10 @@ describe('MogaStaking Edge Cases', function () {
             
             // Check rewards after second period
             let rewards2 = await mogaStaking.rewardsFlexible(addr1.address);
-            console.log(`Total rewards after additional 180 days at 3%: ${hre.ethers.formatEther(rewards2 - hre.ethers.parseEther('1000'))}`);
+            console.log(`After additional 180 days at 3%:`);
+            console.log(`- User stake balance: ${hre.ethers.formatEther(stake1)}`);
+            console.log(`- Interest earned: ${hre.ethers.formatEther(rewards2)}`);
+            console.log(`- Total value: ${hre.ethers.formatEther(stake1 + rewards2)}`);
             
             // Change rate to 7%
             await mogaStaking.connect(mogaAdmin).setNewFlexibleRewardRate(hre.ethers.parseEther('0.07'));
@@ -356,7 +365,10 @@ describe('MogaStaking Edge Cases', function () {
             
             // Check final rewards
             let rewards3 = await mogaStaking.rewardsFlexible(addr1.address);
-            console.log(`Total rewards after additional 90 days at 7%: ${hre.ethers.formatEther(rewards3 - hre.ethers.parseEther('1000'))}`);
+            console.log(`After additional 90 days at 7%:`);
+            console.log(`- User stake balance: ${hre.ethers.formatEther(stake1)}`);
+            console.log(`- Interest earned: ${hre.ethers.formatEther(rewards3)}`);
+            console.log(`- Total value: ${hre.ethers.formatEther(stake1 + rewards3)}`);
             
             // Verify rewards increased after each period
             expect(rewards2).to.be.gt(rewards1);

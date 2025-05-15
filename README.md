@@ -32,6 +32,7 @@ npx hardhat verify --network opencampus deployedVestingAddress "mogaAdminAddress
 ```shell
 # Update .env file with PUBLIC_KEY, PRIVATE_KEY, ALCHEMY_API, INFURA_API, ETHERSCAN_API_KEY
 HARDHAT_NETWORK=opencampus node scripts/1-deploy.js
+# Run the command `npx hardhat verify --network opencampus ...` for each new contract
 # Update .env file with MOGA_CONTRACT, VESTING_CONTRACT, STAKING_CONTRACT
 HARDHAT_NETWORK=opencampus node scripts/2-trigger-TGE.js
 HARDHAT_NETWORK=opencampus node scripts/3-transfer-to-vesting.js [amount]

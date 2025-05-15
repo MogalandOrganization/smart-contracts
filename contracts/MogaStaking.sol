@@ -73,6 +73,8 @@ contract MogaStaking is Ownable, Pausable, ReentrancyGuard, DSMath {
     mapping(address => uint256) public flexibleBalanceOf; // User's staked balance
     mapping(address => uint256) public userRewardIndex; // User's snapshot of rewardIndex
     mapping(address => uint256) public userUnclaimedRewards; // User's unclaimed rewards
+    address[] private flexibleStakers; // List of all flexible stakers
+    mapping(address => uint256) private flexibleStakerIndexes; // Index of each flexible staker in the list
 
     event FlexibleRewardRateModified(uint256 _newRate);
     event FlexibleFeeModified(uint256 _newFee);
@@ -492,6 +494,12 @@ contract MogaStaking is Ownable, Pausable, ReentrancyGuard, DSMath {
     function stakeFlexible(uint256 _amount) external whenNotPaused nonReentrant {
         require(_amount > 0, 'Cannot stake zero amount');
 
+        // Keep track of all flexible stakers
+        if (flexibleStakerIndexes[msg.sender] == 0) {
+            flexibleStakers.push(msg.sender);
+            flexibleStakerIndexes[msg.sender] = flexibleStakers.length;
+        }
+
         // Update user's rewards first (if they already have a stake)
         updateUserRewards(msg.sender);
 
@@ -510,6 +518,29 @@ contract MogaStaking is Ownable, Pausable, ReentrancyGuard, DSMath {
         totalStaked += _amount;
 
         emit DepositFlexible(msg.sender, _amount);
+    }
+
+    function getFlexibleStakers(uint256 _start, uint256 _count) external view onlyOwner returns (address[] memory) {
+        address[] memory stakers = flexibleStakers;
+        uint256 length = stakers.length;
+
+        require(_start < length, 'Start index out of bounds');
+
+        if (_start == 0 && length < _count) {
+            return stakers;
+        }
+
+        uint256 end = _start + _count;
+        if (end > length) {
+            end = length;
+        }
+
+        address[] memory paginatedAddresses = new address[](end - _start);
+        for (uint256 i = _start; i < end; i++) {
+            paginatedAddresses[i - _start] = stakers[i];
+        }
+
+        return paginatedAddresses;
     }
 
     /**

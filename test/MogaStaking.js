@@ -245,7 +245,7 @@ describe('MogaStaking contract', function () {
                 [hre.ethers.parseEther(stakeAmount) * -1n, hre.ethers.parseEther(stakeAmount)],
             );
 
-            let [stakeOfferId, principle, created, owner] = await mogaStaking.getStakeDetails(1);
+            let [stakeOfferId, principle, created, owner] = await mogaStaking.connect(mogaAdmin).getStakeDetails(1);
 
             expect(stakeOfferId == 1);
             expect(principle == stakeAmount);
@@ -271,7 +271,7 @@ describe('MogaStaking contract', function () {
             );
             await expect(tx1).to.emit(mogaStaking, 'Deposit').withArgs(addr1.address, hre.ethers.parseEther(halfStakeAmount), 1);
 
-            let [stakeOfferId, principle, created, owner] = await mogaStaking.getStakeDetails(1);
+            let [stakeOfferId, principle, created, owner] = await mogaStaking.connect(mogaAdmin).getStakeDetails(1);
 
             expect(stakeOfferId == 1);
             expect(principle == halfStakeAmount);
@@ -289,7 +289,7 @@ describe('MogaStaking contract', function () {
             );
             await expect(tx2).to.emit(mogaStaking, 'Deposit').withArgs(addr2.address, hre.ethers.parseEther(halfStakeAmount), 2);
 
-            let details = await mogaStaking.getStakeDetails(2);
+            let details = await mogaStaking.connect(mogaAdmin).getStakeDetails(2);
             stakeOfferId = details[0];
             principle = details[1];
             created = details[2];
@@ -350,15 +350,14 @@ describe('MogaStaking contract', function () {
                 .createStakeOffer(hre.ethers.parseEther(rate.toString()), 10, twoHourMaturity.toString(), false);
 
             // Stake tokens
-            await expect(mogaStaking.connect(addr1).stakeFixedTerm(1, hre.ethers.parseEther(stakeAmount)))
-                .to.changeTokenBalances(
-                    mogaToken,
-                    [addr1, mogaStaking],
-                    [hre.ethers.parseEther(stakeAmount) * -1n, hre.ethers.parseEther(stakeAmount)]
-                );
+            await expect(mogaStaking.connect(addr1).stakeFixedTerm(1, hre.ethers.parseEther(stakeAmount))).to.changeTokenBalances(
+                mogaToken,
+                [addr1, mogaStaking],
+                [hre.ethers.parseEther(stakeAmount) * -1n, hre.ethers.parseEther(stakeAmount)],
+            );
 
             // Check stake details to confirm stake was created properly
-            let [stakeOfferId, principle, created, owner] = await mogaStaking.getStakeDetails(1);
+            let [stakeOfferId, principle, created, owner] = await mogaStaking.connect(mogaAdmin).getStakeDetails(1);
             expect(stakeOfferId).to.equal(1);
             expect(principle).to.equal(hre.ethers.parseEther(stakeAmount));
             expect(owner).to.equal(addr1.address);
@@ -368,7 +367,7 @@ describe('MogaStaking contract', function () {
 
             // Log reward amount before unstaking to check calculated interest
             const rewardAmount = await mogaStaking.rewards(1);
-            console.log("Reward amount after short period:", hre.ethers.formatEther(rewardAmount));
+            console.log('Reward amount after short period:', hre.ethers.formatEther(rewardAmount));
 
             // Record token balance before unstaking
             const beforeBalance = await mogaToken.balanceOf(addr1.address);
@@ -379,10 +378,10 @@ describe('MogaStaking contract', function () {
             // Record token balance after unstaking and calculate difference
             const afterBalance = await mogaToken.balanceOf(addr1.address);
             const returnedAmount = afterBalance - beforeBalance;
-            console.log("Returned amount after unstaking:", hre.ethers.formatEther(returnedAmount));
+            console.log('Returned amount after unstaking:', hre.ethers.formatEther(returnedAmount));
 
             // Verify stake is gone from contract
-            const afterUnstake = await mogaStaking.getStakeDetails(1);
+            const afterUnstake = await mogaStaking.connect(mogaAdmin).getStakeDetails(1);
             expect(afterUnstake[1]).to.equal(0); // Principle should be 0 after unstaking
 
             // Verify total staked has decreased
@@ -408,16 +407,16 @@ describe('MogaStaking contract', function () {
             // Get reward amount
             const initialStake = hre.ethers.parseEther(stakeAmount);
             const rewardBefore = await mogaStaking.rewards(1);
-            console.log("Initial stake amount:", hre.ethers.formatEther(initialStake));
-            console.log("Total reward amount (with interest):", hre.ethers.formatEther(rewardBefore));
+            console.log('Initial stake amount:', hre.ethers.formatEther(initialStake));
+            console.log('Total reward amount (with interest):', hre.ethers.formatEther(rewardBefore));
 
             // Calculate expected interest and fee manually
             const interest = rewardBefore - initialStake;
-            console.log("Interest earned:", hre.ethers.formatEther(interest));
+            console.log('Interest earned:', hre.ethers.formatEther(interest));
 
             // Get total supply before unstaking
             const totalSupplyBefore = await mogaToken.totalSupply();
-            console.log("Total token supply before unstaking:", hre.ethers.formatEther(totalSupplyBefore));
+            console.log('Total token supply before unstaking:', hre.ethers.formatEther(totalSupplyBefore));
 
             // Get user balance before unstaking
             const balanceBefore = await mogaToken.balanceOf(addr1.address);
@@ -428,13 +427,13 @@ describe('MogaStaking contract', function () {
             // Get user balance after unstaking
             const balanceAfter = await mogaToken.balanceOf(addr1.address);
             const amountReceived = balanceAfter - balanceBefore;
-            console.log("Amount received after unstaking:", hre.ethers.formatEther(amountReceived));
+            console.log('Amount received after unstaking:', hre.ethers.formatEther(amountReceived));
 
             // Get total supply after unstaking to check burn amount
             const totalSupplyAfter = await mogaToken.totalSupply();
-            console.log("Total token supply after unstaking:", hre.ethers.formatEther(totalSupplyAfter));
+            console.log('Total token supply after unstaking:', hre.ethers.formatEther(totalSupplyAfter));
             const burnAmount = totalSupplyBefore - totalSupplyAfter;
-            console.log("Amount burned during unstaking:", hre.ethers.formatEther(burnAmount));
+            console.log('Amount burned during unstaking:', hre.ethers.formatEther(burnAmount));
 
             // Verify fee calculation logic
             if (interest > 0) {
@@ -444,8 +443,8 @@ describe('MogaStaking contract', function () {
                 const expectedFeeAmount = (interest * 10n) / 100n;
                 const expectedBurnAmount = expectedFeeAmount / 2n;
 
-                console.log("Expected fee amount:", hre.ethers.formatEther(expectedFeeAmount));
-                console.log("Expected burn amount:", hre.ethers.formatEther(expectedBurnAmount));
+                console.log('Expected fee amount:', hre.ethers.formatEther(expectedFeeAmount));
+                console.log('Expected burn amount:', hre.ethers.formatEther(expectedBurnAmount));
 
                 // Check if burn amount matches expected
                 expect(burnAmount).to.be.closeTo(expectedBurnAmount, 1000000n); // Allow small precision error
@@ -454,7 +453,7 @@ describe('MogaStaking contract', function () {
                 const expectedReceived = initialStake + interest - expectedFeeAmount;
                 expect(amountReceived).to.be.closeTo(expectedReceived, 1000000n); // Allow small precision error
             } else {
-                console.log("No interest earned in this short period");
+                console.log('No interest earned in this short period');
             }
         });
 
@@ -625,16 +624,16 @@ describe('MogaStaking contract', function () {
 
             it('Should update the global rewardIndex over time', async function () {
                 const initialIndex = await mogaStaking.rewardIndex();
-                
+
                 // Stake to ensure the system is active
                 await mogaStaking.connect(addr1).stakeFlexible(hre.ethers.parseEther(stakeAmount));
-                
+
                 // Advance time
                 await helpers.time.increase(yearMaturity);
-                
+
                 // Trigger an update by interacting with the contract
                 await mogaStaking.connect(mogaAdmin).setNewFlexibleRewardRate(hre.ethers.parseEther(rate.toString()));
-                
+
                 // Check if the index increased
                 const newIndex = await mogaStaking.rewardIndex();
                 expect(newIndex).to.be.gt(initialIndex);
@@ -673,13 +672,14 @@ describe('MogaStaking contract', function () {
                         .to.emit(mogaStaking, 'DepositFlexible')
                         .withArgs(addr1.address, hre.ethers.parseEther(stakeAmount));
                 });
-                
+
                 it('should emit RewardIndexUpdated event when rate changes', async function () {
                     await mogaStaking.connect(addr1).stakeFlexible(hre.ethers.parseEther(stakeAmount));
                     await helpers.time.increase(yearMaturity);
-                    
-                    await expect(mogaStaking.connect(mogaAdmin).setNewFlexibleRewardRate(hre.ethers.parseEther(smallRate.toString())))
-                        .to.emit(mogaStaking, 'RewardIndexUpdated');
+
+                    await expect(
+                        mogaStaking.connect(mogaAdmin).setNewFlexibleRewardRate(hre.ethers.parseEther(smallRate.toString())),
+                    ).to.emit(mogaStaking, 'RewardIndexUpdated');
                 });
             });
         });
@@ -693,35 +693,35 @@ describe('MogaStaking contract', function () {
             it('Should increment balanceOf(address) when compounding', async function () {
                 const initialBalance = await mogaStaking.flexibleBalanceOf(addr1.address);
                 const initialRewards = await mogaStaking.rewardsFlexible(addr1.address);
-                
+
                 console.log(`Initial balance: ${hre.ethers.formatEther(initialBalance)}`);
                 console.log(`Initial rewards: ${hre.ethers.formatEther(initialRewards)}`);
-                
+
                 await mogaStaking.connect(addr1).compoundFlexible(addr1.address);
                 const newBalance = await mogaStaking.flexibleBalanceOf(addr1.address);
-                
+
                 console.log(`New balance after compound: ${hre.ethers.formatEther(newBalance)}`);
-                
+
                 // New balance should be greater than initial balance
                 expect(newBalance).to.be.gt(initialBalance);
-                
+
                 // Rough calculation - approximately 5% after a year with some fees taken out
                 // should increase balance by around 4.5-4.7%
-                const minExpectedBalance = initialBalance * 104n / 100n;
+                const minExpectedBalance = (initialBalance * 104n) / 100n;
                 expect(newBalance).to.be.gt(minExpectedBalance);
             });
 
             it('Should increment staking balance', async function () {
                 const initialStakingBalance = await mogaStaking.totalStaked();
-                
+
                 await mogaStaking.connect(addr1).compoundFlexible(addr1.address);
                 const newStakingBalance = await mogaStaking.totalStaked();
-                
+
                 // Total staking balance should increase
                 expect(newStakingBalance).to.be.gt(initialStakingBalance);
-                
+
                 // Should increase by roughly the same amount as the user's balance increases
-                const expectedMinIncrease = initialStakingBalance * 104n / 100n - initialStakingBalance;
+                const expectedMinIncrease = (initialStakingBalance * 104n) / 100n - initialStakingBalance;
                 const actualIncrease = newStakingBalance - initialStakingBalance;
                 expect(actualIncrease).to.be.gt(expectedMinIncrease);
             });
@@ -729,40 +729,39 @@ describe('MogaStaking contract', function () {
             it('Should set userUnclaimedRewards to zero after compounding', async function () {
                 // First update to generate rewards
                 await mogaStaking.connect(addr1).compoundFlexible(addr1.address);
-                
+
                 // Advance time to generate more rewards
                 await helpers.time.increase(yearMaturity / 4); // Add 3 more months
-                
+
                 // Trigger an update for the user which will update userUnclaimedRewards
                 await mogaStaking.connect(mogaAdmin).setNewFlexibleRewardRate(hre.ethers.parseEther(rate.toString()));
-                
+
                 // Compound again to move rewards to principal
                 await mogaStaking.connect(addr1).compoundFlexible(addr1.address);
-                
+
                 // Check that unclaimed rewards is reset to 0
                 expect(await mogaStaking.userUnclaimedRewards(addr1.address)).to.equal(0);
             });
 
             it('Should update userRewardIndex when compounding', async function () {
                 const initialIndex = await mogaStaking.userRewardIndex(addr1.address);
-                
+
                 // Advance time to ensure index will update
                 await helpers.time.increase(yearMaturity / 4);
-                
+
                 // Trigger a global index update
                 await mogaStaking.connect(mogaAdmin).setNewFlexibleRewardRate(hre.ethers.parseEther(rate.toString()));
                 const globalIndex = await mogaStaking.rewardIndex();
-                
+
                 // Compound which should update the user's index
                 await mogaStaking.connect(addr1).compoundFlexible(addr1.address);
                 const newUserIndex = await mogaStaking.userRewardIndex(addr1.address);
-                
+
                 // The user's index should now be close to the global index
                 // Due to the way the indexes are updated, there can be some differences
                 // We just make sure they're relatively close
-                const difference = newUserIndex > globalIndex ? 
-                    newUserIndex - globalIndex : globalIndex - newUserIndex;
-                    
+                const difference = newUserIndex > globalIndex ? newUserIndex - globalIndex : globalIndex - newUserIndex;
+
                 const tolerance = globalIndex / 10000n; // Allow 0.01% difference
                 expect(difference).to.be.lt(tolerance);
                 expect(newUserIndex).to.not.equal(initialIndex);
@@ -770,8 +769,7 @@ describe('MogaStaking contract', function () {
 
             describe('Events', function () {
                 it('Should emit CompoundFlexible event', async function () {
-                    await expect(mogaStaking.connect(addr1).compoundFlexible(addr1.address))
-                        .to.emit(mogaStaking, 'CompoundFlexible');
+                    await expect(mogaStaking.connect(addr1).compoundFlexible(addr1.address)).to.emit(mogaStaking, 'CompoundFlexible');
                 });
             });
         });
@@ -786,24 +784,24 @@ describe('MogaStaking contract', function () {
                 const initialUserBalance = await mogaToken.balanceOf(addr1.address);
                 const initialContractBalance = await mogaToken.balanceOf(mogaStakingAddress);
                 const initialStake = await mogaStaking.flexibleBalanceOf(addr1.address);
-                
+
                 // Withdraw
                 await mogaStaking.connect(addr1).withdrawFlexible();
-                
+
                 // Check balances
                 const finalUserBalance = await mogaToken.balanceOf(addr1.address);
                 const finalContractBalance = await mogaToken.balanceOf(mogaStakingAddress);
-                
+
                 const userGain = finalUserBalance - initialUserBalance;
                 console.log(`User balance change: ${hre.ethers.formatEther(userGain)}`);
                 console.log(`Contract balance change: ${hre.ethers.formatEther(finalContractBalance - initialContractBalance)}`);
-                
+
                 // User should have received at least their stake back, and some interest
                 expect(userGain).to.be.gt(initialStake);
-                
+
                 // Due to 5% interest rate over a year, should get roughly 4.5% more back
                 // after fees are considered
-                const minExpectedWithdraw = initialStake * 104n / 100n;
+                const minExpectedWithdraw = (initialStake * 104n) / 100n;
                 expect(userGain).to.be.gt(minExpectedWithdraw);
             });
 
@@ -811,14 +809,14 @@ describe('MogaStaking contract', function () {
                 await mogaStaking.connect(addr1).withdrawFlexible();
                 expect(await mogaStaking.flexibleBalanceOf(addr1.address)).to.eq(0);
             });
-            
+
             it('Should set userUnclaimedRewards to zero', async function () {
                 // First update rewards but don't withdraw
                 await mogaStaking.connect(mogaAdmin).setNewFlexibleRewardRate(hre.ethers.parseEther(rate.toString()));
-                
+
                 // Now withdraw
                 await mogaStaking.connect(addr1).withdrawFlexible();
-                
+
                 // Check that unclaimed rewards is reset
                 expect(await mogaStaking.userUnclaimedRewards(addr1.address)).to.equal(0);
             });
@@ -826,9 +824,9 @@ describe('MogaStaking contract', function () {
             it('Should decrement total staking balance correctly', async function () {
                 const initialStaked = await mogaStaking.totalStaked();
                 const userStake = await mogaStaking.flexibleBalanceOf(addr1.address);
-                
+
                 await mogaStaking.connect(addr1).withdrawFlexible();
-                
+
                 const finalStaked = await mogaStaking.totalStaked();
                 expect(finalStaked).to.equal(initialStaked - userStake);
             });

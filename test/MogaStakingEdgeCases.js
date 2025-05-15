@@ -96,15 +96,15 @@ describe('MogaStaking Edge Cases', function () {
             );
 
             // Make sure we're using the correct stake offer ID
-            const stakesOfferCount = await mogaStaking.getAllStakeOfferIds();
-            const newStakeOfferId = stakesOfferCount.length;
+            const lastStakeOfferId = await mogaStaking.lastStakeOfferId();
+            const newStakeOfferId = Number(lastStakeOfferId);
 
             // Stake tokens
             const initialBalance = await mogaToken.balanceOf(addr1.address);
             await mogaStaking.connect(addr1).stakeFixedTerm(newStakeOfferId, hre.ethers.parseEther(normalStakeAmount));
 
             // Get stake ID
-            const addr1Stakes = await mogaStaking.getAllStakeIdsOfAddress(addr1.address);
+            const addr1Stakes = await mogaStaking.connect(mogaAdmin).getAllStakeIdsOfAddress(addr1.address, 0, 100);
             const stakeId = addr1Stakes[addr1Stakes.length - 1];
 
             // Wait for just the lock period
@@ -139,22 +139,22 @@ describe('MogaStaking Edge Cases', function () {
                 false,
             );
 
-            // Get correct stake offer ID
-            const stakesOfferCount = await mogaStaking.getAllStakeOfferIds();
-            const newStakeOfferId = stakesOfferCount.length;
+            // Make sure we're using the correct stake offer ID
+            const lastStakeOfferId = await mogaStaking.lastStakeOfferId();
+            const newStakeOfferId = Number(lastStakeOfferId);
 
             // Stake a very small amount
             await mogaStaking.connect(addr1).stakeFixedTerm(newStakeOfferId, hre.ethers.parseEther(verySmallStakeAmount));
 
             // Get stake ID
-            const addr1Stakes = await mogaStaking.getAllStakeIdsOfAddress(addr1.address);
+            const addr1Stakes = await mogaStaking.connect(mogaAdmin).getAllStakeIdsOfAddress(addr1.address, 0, 100);
             const stakeId = addr1Stakes[addr1Stakes.length - 1];
 
             // Wait for stake period
             await helpers.time.increase(mediumPeriod + 1);
 
             // Calculate expected interest (will be tiny)
-            const stakeDetails = await mogaStaking.getStakeDetails(stakeId);
+            const stakeDetails = await mogaStaking.connect(mogaAdmin).getStakeDetails(stakeId);
             const stakePrincipal = stakeDetails[1];
             const rewardsAmount = await mogaStaking.rewards(stakeId);
             const interest = rewardsAmount - stakePrincipal;
@@ -167,7 +167,7 @@ describe('MogaStaking Edge Cases', function () {
             await mogaStaking.connect(addr1).unStakeFixedTerm(stakeId);
 
             // Verify stake is removed
-            const stakeAfter = await mogaStaking.getStakeDetails(stakeId);
+            const stakeAfter = await mogaStaking.connect(mogaAdmin).getStakeDetails(stakeId);
             expect(stakeAfter[1]).to.equal(0); // Principle should be 0 after unstaking
         });
     });
@@ -182,9 +182,9 @@ describe('MogaStaking Edge Cases', function () {
                 false,
             );
 
-            // Get correct stake offer ID
-            const stakesOfferCount = await mogaStaking.getAllStakeOfferIds();
-            const newStakeOfferId = stakesOfferCount.length;
+            // Make sure we're using the correct stake offer ID
+            const lastStakeOfferId = await mogaStaking.lastStakeOfferId();
+            const newStakeOfferId = Number(lastStakeOfferId);
 
             // Record initial token supply
             const initialSupply = await mogaToken.totalSupply();
@@ -193,7 +193,7 @@ describe('MogaStaking Edge Cases', function () {
             await mogaStaking.connect(addr1).stakeFixedTerm(newStakeOfferId, hre.ethers.parseEther(verySmallStakeAmount));
 
             // Get stake ID
-            const addr1Stakes = await mogaStaking.getAllStakeIdsOfAddress(addr1.address);
+            const addr1Stakes = await mogaStaking.connect(mogaAdmin).getAllStakeIdsOfAddress(addr1.address, 0, 100);
             const stakeId = addr1Stakes[addr1Stakes.length - 1];
 
             // Wait for lock period
@@ -240,15 +240,15 @@ describe('MogaStaking Edge Cases', function () {
                 false,
             );
 
-            // Get correct stake offer ID
-            const stakesOfferCount = await mogaStaking.getAllStakeOfferIds();
-            const newStakeOfferId = stakesOfferCount.length;
+            // Make sure we're using the correct stake offer ID
+            const lastStakeOfferId = await mogaStaking.lastStakeOfferId();
+            const newStakeOfferId = Number(lastStakeOfferId);
 
             // Stake a large amount
             await mogaStaking.connect(mogaAdmin).stakeFixedTerm(newStakeOfferId, hre.ethers.parseEther(largeStakeAmount));
 
             // Get stake ID
-            const adminStakes = await mogaStaking.getAllStakeIdsOfAddress(mogaAdmin.address);
+            const adminStakes = await mogaStaking.connect(mogaAdmin).getAllStakeIdsOfAddress(mogaAdmin.address, 0, 100);
             const stakeId = adminStakes[adminStakes.length - 1];
 
             // Wait for stake period
@@ -287,7 +287,7 @@ describe('MogaStaking Edge Cases', function () {
             await mogaStaking.connect(addr1).stakeFlexible(hre.ethers.parseEther(normalStakeAmount));
 
             // Verify both stakes exist
-            const stakeIds = await mogaStaking.getAllStakeIdsOfAddress(addr1.address);
+            const stakeIds = await mogaStaking.connect(mogaAdmin).getAllStakeIdsOfAddress(addr1.address, 0, 100);
             expect(stakeIds.length).to.equal(1); // Fixed-term stake
 
             const flexibleBalance = await mogaStaking.flexibleBalanceOf(addr1.address);
@@ -342,18 +342,20 @@ describe('MogaStaking Edge Cases', function () {
             console.log(`- Interest earned: ${hre.ethers.formatEther(rewards1)}`);
             console.log(`- Total value: ${hre.ethers.formatEther(stake1 + rewards1)}`);
 
-            // Not expected rewards calculation with basic compounding: R = P * r * t
-            let P = new BN('1000'); // Principal
-            let r = new BN('0.05'); // Annual interest rate (5%)
-            let t = new BN('90').div('365'); // Time in years (90 days)
-            const notExpectedRewards1 = P * r * t;
-            console.log(`No expected rewards: ${notExpectedRewards1.toString()}`);
-            expect(rewards1).not.to.be.closeTo(hre.ethers.parseEther(notExpectedRewards1.toString()), hre.ethers.parseEther('0.0001'));
-            // Expected rewards calculation with continuous compounding: A = P × e^(r × t)
-            let A = P.times(new BN(Math.exp(r.times(t).toNumber()))); // Total amount after interest
-            const expectedRewards1 = A.minus(P); // Total amount minus principal
-            console.log(`Expected rewards: ${expectedRewards1.toString()}`);
-            expect(rewards1).to.be.closeTo(hre.ethers.parseEther(expectedRewards1.toString()), hre.ethers.parseEther('0.0001'));
+            {
+                const P = new BN('1000'); // Principal
+                const r = new BN('0.05'); // Annual interest rate (5%)
+                const t = new BN('90').div('365'); // Time in years (90 days)
+                // Not expected rewards calculation with basic compounding: R = P * r * t
+                const notExpectedRewards1 = P * r * t;
+                console.log(`No expected rewards: ${notExpectedRewards1.toString()}`);
+                expect(rewards1).not.to.be.closeTo(hre.ethers.parseEther(notExpectedRewards1.toString()), hre.ethers.parseEther('0.0001'));
+                // Expected rewards calculation with continuous compounding: A = P × e^(r × t)
+                let A = P.times(new BN(Math.exp(r.times(t).toNumber()))); // Total amount after interest
+                const expectedRewards1 = A.minus(P); // Total amount minus principal
+                console.log(`Expected rewards: ${expectedRewards1.toString()}`);
+                expect(rewards1).to.be.closeTo(hre.ethers.parseEther(expectedRewards1.toString()), hre.ethers.parseEther('0.0001'));
+            }
 
             // Change rate to 3%
             await mogaStaking.connect(mogaAdmin).setNewFlexibleRewardRate(hre.ethers.parseEther('0.03'));
@@ -369,18 +371,20 @@ describe('MogaStaking Edge Cases', function () {
             console.log(`- Interest earned: ${hre.ethers.formatEther(rewards2)}`);
             console.log(`- Total value: ${hre.ethers.formatEther(stake1 + rewards2)}`);
 
-            // Not expected rewards calculation with basic compounding: R = P * r * t
-            P = A; // Initial principal is now the total amount after first period
-            r = new BN('0.03'); // Annual interest rate (3%)
-            t = new BN('180').div('365'); // Time in years (180 days)
-            const notExpectedRewards2 = P * r * t;
-            console.log(`No expected rewards: ${notExpectedRewards2.toString()}`);
-            expect(rewards2).not.to.be.closeTo(hre.ethers.parseEther(notExpectedRewards2.toString()), hre.ethers.parseEther('0.0001'));
-            // Expected rewards calculation with continuous compounding: A = P × e^(r × t)
-            A = P.times(new BN(Math.exp(r.times(t).toNumber()))); // Total amount after interest
-            const expectedRewards2 = A.minus(P); // Total amount minus principal
-            console.log(`Expected rewards: ${expectedRewards2.toString()}`);
-            expect(rewards2).to.be.closeTo(hre.ethers.parseEther(expectedRewards2.toFixed(18)), hre.ethers.parseEther('0.0001'));
+            {
+                // First 90 days
+                const P = new BN('1000'); // Principal
+                let r = new BN('0.05'); // Annual interest rate (5%)
+                let t = new BN('90').div('365'); // Time in years (90 days)
+                let A = P.times(new BN(Math.exp(r.times(t).toNumber()))); // Total amount after interest
+                // Second 180 days
+                r = new BN('0.03');
+                t = new BN('180').div('365'); // Time in years (90 days)
+                A = A.times(new BN(Math.exp(r.times(t).toNumber()))); // Total amount after interest
+                const expectedRewards2 = A.minus(P); // Total amount minus principal
+                console.log(`Expected rewards: ${expectedRewards2.toString()}`);
+                expect(rewards2).to.be.closeTo(hre.ethers.parseEther(expectedRewards2.toFixed(18)), hre.ethers.parseEther('0.0001'));
+            }
 
             // Change rate to 7%
             await mogaStaking.connect(mogaAdmin).setNewFlexibleRewardRate(hre.ethers.parseEther('0.07'));
@@ -396,18 +400,24 @@ describe('MogaStaking Edge Cases', function () {
             console.log(`- Interest earned: ${hre.ethers.formatEther(rewards3)}`);
             console.log(`- Total value: ${hre.ethers.formatEther(stake1 + rewards3)}`);
 
-            // Not expected rewards calculation with basic compounding: R = P * r * t
-            P = A; // Initial principal is now the total amount after first period
-            r = new BN('0.03'); // Annual interest rate (3%)
-            t = new BN('180').div('365'); // Time in years (180 days)
-            const notExpectedRewards3 = P * r * t;
-            console.log(`No expected rewards: ${notExpectedRewards3.toString()}`);
-            expect(rewards3).not.to.be.closeTo(hre.ethers.parseEther(notExpectedRewards3.toString()), hre.ethers.parseEther('0.0001'));
-            // Expected rewards calculation with continuous compounding: A = P × e^(r × t)
-            A = P.times(new BN(Math.exp(r.times(t).toNumber()))); // Total amount after interest
-            const expectedRewards3 = A.minus(P); // Total amount minus principal
-            console.log(`Expected rewards: ${expectedRewards3.toString()}`);
-            expect(rewards3).to.be.closeTo(hre.ethers.parseEther(expectedRewards3.toFixed(18)), hre.ethers.parseEther('0.0001'));
+            {
+                // First 90 days
+                const P = new BN('1000'); // Principal
+                let r = new BN('0.05'); // Annual interest rate (5%)
+                let t = new BN('90').div('365'); // Time in years (90 days)
+                let A = P.times(new BN(Math.exp(r.times(t).toNumber()))); // Total amount after interest
+                // Second 180 days
+                r = new BN('0.03');
+                t = new BN('180').div('365'); // Time in years (90 days)
+                A = A.times(new BN(Math.exp(r.times(t).toNumber()))); // Total amount after interest
+                // Last 90 days
+                r = new BN('0.07');
+                t = new BN('90').div('365');
+                A = A.times(new BN(Math.exp(r.times(t).toNumber())));
+                const expectedRewards3 = A.minus(P); // Total amount minus principal
+                console.log(`Expected rewards: ${expectedRewards3.toString()}`);
+                expect(rewards3).to.be.closeTo(hre.ethers.parseEther(expectedRewards3.toFixed(18)), hre.ethers.parseEther('0.0001'));
+            }
 
             // Verify rewards increased after each period
             expect(rewards2).to.be.gt(rewards1);
@@ -424,9 +434,6 @@ describe('MogaStaking Edge Cases', function () {
         });
 
         it('should handle concurrent users with different start times correctly', async function () {
-            const yearlyRateInRay = await mogaStaking.flexibleRewardRate();
-            const yearlyRate = Number((yearlyRateInRay - 10n ** 27n) * (365n * 86400n)) / Math.pow(10, 27);
-
             // First user starts staking
             await mogaStaking.connect(addr1).stakeFlexible(hre.ethers.parseEther('1000'));
 
@@ -459,24 +466,49 @@ describe('MogaStaking Edge Cases', function () {
 
             const initialStake = hre.ethers.parseEther('1000');
 
-            // Expected rewards calculation with continuous compounding: A = P × e^(r × t)
-            const P = BN('1000');
-            const r = new BN(`${yearlyRate}`); // Annual interest rate (5%)
-            let t = new BN('60').div('365'); // Time in years (60 days)
-            let A = P.times(new BN(Math.exp(r.times(t).toNumber()))); // Total amount after interest
-            const expectedRewards3 = A.minus(P); // Total amount minus principal
-            console.log(`Expected rewards 3: ${expectedRewards3.toString()}`);
-            expect(rewards3).to.be.closeTo(hre.ethers.parseEther(expectedRewards3.toFixed(18)), hre.ethers.parseEther('0.0001'));
-            t = new BN('90').div('365'); // Time in years (30 + 60 days)
-            A = P.times(new BN(Math.exp(r.times(t).toNumber()))); // Total amount after interest
-            const expectedRewards2 = A.minus(P); // Total amount minus principal
-            console.log(`Expected rewards 2: ${expectedRewards2.toString()}`);
-            expect(rewards2).to.be.closeTo(hre.ethers.parseEther(expectedRewards2.toFixed(18)), hre.ethers.parseEther('0.0001'));
-            t = new BN('120').div('365'); // Time in years (30 + 30 + 60 days)
-            A = P.times(new BN(Math.exp(r.times(t).toNumber()))); // Total amount after interest
-            const expectedRewards1 = A.minus(P); // Total amount minus principal
-            console.log(`Expected rewards 1: ${expectedRewards1.toString()}`);
-            expect(rewards1).to.be.closeTo(hre.ethers.parseEther(expectedRewards1.toFixed(18)), hre.ethers.parseEther('0.0001'));
+            {
+                // Wallet 1
+                // First 30 + 30 days
+                const P = BN('1000');
+                let r = new BN('0.05'); // Annual interest rate (5%)
+                let t = new BN('60').div('365'); // Time in years (30 days)
+                let A = P.times(new BN(Math.exp(r.times(t).toNumber()))); // Total amount after interest
+                // Last 60 days
+                r = new BN('0.08');
+                t = new BN('60').div('365'); // Time in years (60 days)
+                A = A.times(new BN(Math.exp(r.times(t).toNumber()))); // Total amount after interest
+                const expectedRewards1 = A.minus(P); // Total amount minus principal
+                console.log(`Expected rewards 1: ${expectedRewards1.toString()}`);
+                expect(rewards1).to.be.closeTo(hre.ethers.parseEther(expectedRewards1.toFixed(18)), hre.ethers.parseEther('0.0001'));
+            }
+
+            {
+                // Wallet 2
+                // First 30 days
+                const P = BN('1000');
+                let r = new BN('0.05'); // Annual interest rate (5%)
+                let t = new BN('30').div('365'); // Time in years (30 days)
+                let A = P.times(new BN(Math.exp(r.times(t).toNumber()))); // Total amount after interest
+                // Last 60 days
+                r = new BN('0.08');
+                t = new BN('60').div('365'); // Time in years (60 days)
+                A = A.times(new BN(Math.exp(r.times(t).toNumber()))); // Total amount after interest
+                const expectedRewards2 = A.minus(P); // Total amount minus principal
+                console.log(`Expected rewards 2: ${expectedRewards2.toString()}`);
+                expect(rewards2).to.be.closeTo(hre.ethers.parseEther(expectedRewards2.toFixed(18)), hre.ethers.parseEther('0.0001'));
+            }
+
+            {
+                // Wallet 3
+                // Last 60 days
+                const P = BN('1000');
+                let r = new BN('0.08'); // Annual interest rate (8%)
+                let t = new BN('60').div('365'); // Time in years (60 days)
+                let A = P.times(new BN(Math.exp(r.times(t).toNumber()))); // Total amount after interest
+                const expectedRewards3 = A.minus(P); // Total amount minus principal
+                console.log(`Expected rewards 3: ${expectedRewards3.toString()}`);
+                expect(rewards3).to.be.closeTo(hre.ethers.parseEther(expectedRewards3.toFixed(18)), hre.ethers.parseEther('0.0001'));
+            }
 
             // User 1 should have more rewards than User 2, who should have more than User 3
             expect(rewards1).to.be.gt(rewards2);

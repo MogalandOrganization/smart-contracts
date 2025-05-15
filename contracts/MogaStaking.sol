@@ -1,14 +1,14 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.20;
 
-import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
-import "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
-import "@openzeppelin/contracts/token/ERC20/extensions/ERC20Burnable.sol";
-import "@openzeppelin/contracts/utils/Pausable.sol";
-import "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
-import "@openzeppelin/contracts/access/Ownable.sol";
+import '@openzeppelin/contracts/token/ERC20/IERC20.sol';
+import '@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol';
+import '@openzeppelin/contracts/token/ERC20/extensions/ERC20Burnable.sol';
+import '@openzeppelin/contracts/utils/Pausable.sol';
+import '@openzeppelin/contracts/utils/ReentrancyGuard.sol';
+import '@openzeppelin/contracts/access/Ownable.sol';
 
-import "../lib/DSMath.sol";
+import '../lib/DSMath.sol';
 
 contract MogaStaking is Ownable, Pausable, ReentrancyGuard, DSMath {
     using SafeERC20 for ERC20Burnable;
@@ -37,10 +37,10 @@ contract MogaStaking is Ownable, Pausable, ReentrancyGuard, DSMath {
         address owner;
     }
 
-    uint256[] private allStakeOfferIds;
+    uint256 public lastStakeOfferId = 0;
     mapping(uint256 => StakeOffer) public stakeOffers;
 
-    uint256[] private stakeIds;
+    uint256 private lastStakeId = 0;
     mapping(uint256 => Stake) public stakes;
     mapping(uint256 => uint256) public stakeIdToStakeOffer;
     mapping(address => uint256) private holdersStakingCount;
@@ -57,7 +57,7 @@ contract MogaStaking is Ownable, Pausable, ReentrancyGuard, DSMath {
     error StakeBalanceIsZero(uint256 _stakeId);
     error StakeIsLocked(uint256 _stakeId);
     error InvalidAmount(uint256 _amount);
-    error InvalidOwner(uint256 _stakeId);
+    error InvalidOwner(uint256 _stakeId, address _address);
 
     // Flexible Staking logic
     /**
@@ -65,14 +65,14 @@ contract MogaStaking is Ownable, Pausable, ReentrancyGuard, DSMath {
      * variables related to the flexible staking mechanism
      * Using time-weighted accumulators for efficient reward tracking
      */
-    uint256 public flexibleRewardRate = 0;     // Current rate as RAY value
-    uint256 public flexibleFee = 0;            // Current fee percentage
-    uint256 public rewardIndex;                // Global accumulator for rewards (starts at RAY = 10^27)
-    uint256 public lastIndexUpdateTimestamp;   // Last time rewardIndex was updated
+    uint256 public flexibleRewardRate = 0; // Current rate as RAY value
+    uint256 public flexibleFee = 0; // Current fee percentage
+    uint256 public rewardIndex; // Global accumulator for rewards (starts at RAY = 10^27)
+    uint256 public lastIndexUpdateTimestamp; // Last time rewardIndex was updated
 
-    mapping(address => uint256) public flexibleBalanceOf;      // User's staked balance
-    mapping(address => uint256) public userRewardIndex;        // User's snapshot of rewardIndex
-    mapping(address => uint256) public userUnclaimedRewards;   // User's unclaimed rewards
+    mapping(address => uint256) public flexibleBalanceOf; // User's staked balance
+    mapping(address => uint256) public userRewardIndex; // User's snapshot of rewardIndex
+    mapping(address => uint256) public userUnclaimedRewards; // User's unclaimed rewards
 
     event FlexibleRewardRateModified(uint256 _newRate);
     event FlexibleFeeModified(uint256 _newFee);
@@ -136,19 +136,11 @@ contract MogaStaking is Ownable, Pausable, ReentrancyGuard, DSMath {
      * @return The new principal as a wad. Equal to original principal +
      *   interest accrued
      */
-    function accrueInterest(
-        uint _principal,
-        uint _rate,
-        uint _age
-    ) external pure returns (uint) {
+    function accrueInterest(uint _principal, uint _rate, uint _age) external pure returns (uint) {
         return _accrueInterest(_principal, _rate, _age);
     }
 
-    function _accrueInterest(
-        uint _principal,
-        uint _rate,
-        uint _age
-    ) internal pure returns (uint) {
+    function _accrueInterest(uint _principal, uint _rate, uint _age) internal pure returns (uint) {
         return rmul(_principal, rpow(_rate, _age));
     }
 
@@ -168,11 +160,7 @@ contract MogaStaking is Ownable, Pausable, ReentrancyGuard, DSMath {
     }
 
     function _yearlyRateToRay(uint _rateWad) internal pure returns (uint) {
-        return
-            add(
-                wadToRay(1 ether),
-                rdiv(wadToRay(_rateWad), weiToRay(365 * 86400))
-            );
+        return add(wadToRay(1 ether), rdiv(wadToRay(_rateWad), weiToRay(365 * 86400)));
     }
 
     /**
@@ -197,7 +185,7 @@ contract MogaStaking is Ownable, Pausable, ReentrancyGuard, DSMath {
     function updateUserRewards(address _user) internal {
         // First update the global index
         updateRewardIndex();
-        
+
         // If user has a balance and has a valid index snapshot
         if (flexibleBalanceOf[_user] > 0 && userRewardIndex[_user] > 0) {
             // Calculate new rewards using the index ratio
@@ -205,7 +193,7 @@ contract MogaStaking is Ownable, Pausable, ReentrancyGuard, DSMath {
             // Add to unclaimed rewards
             userUnclaimedRewards[_user] += newRewards;
         }
-        
+
         // Update user's index snapshot to current
         userRewardIndex[_user] = rewardIndex;
     }
@@ -264,35 +252,17 @@ contract MogaStaking is Ownable, Pausable, ReentrancyGuard, DSMath {
      * @param amount the amount to withdraw
      */
     function withdraw(uint256 amount) external onlyOwner nonReentrant {
-        require(
-            getWithdrawableAmount() >= amount,
-            "TokenStaking: not enough withdrawable funds"
-        );
+        require(getWithdrawableAmount() >= amount, 'TokenStaking: not enough withdrawable funds');
         token.safeTransfer(msg.sender, amount);
     }
 
-    function createStakeOffer(
-        uint256 _rate,
-        uint256 _fee,
-        uint256 _lockupDuration,
-        bool _onlyAdmin
-    ) external onlyOwner {
-        require(_lockupDuration > 0, "lockup duration must be > 0");
-        require(_rate > 0, "reward rate must be > 0");
-        uint256 stakeOfferId = allStakeOfferIds.length + 1;
-        stakeOffers[stakeOfferId] = StakeOffer(
-            _rate,
-            _fee,
-            _lockupDuration,
-            true,
-            _onlyAdmin
-        );
-        allStakeOfferIds.push(stakeOfferId);
+    function createStakeOffer(uint256 _rate, uint256 _fee, uint256 _lockupDuration, bool _onlyAdmin) external onlyOwner {
+        require(_lockupDuration > 0, 'lockup duration must be > 0');
+        require(_rate > 0, 'reward rate must be > 0');
+        uint256 stakeOfferId = lastStakeOfferId + 1;
+        stakeOffers[stakeOfferId] = StakeOffer(_rate, _fee, _lockupDuration, true, _onlyAdmin);
+        lastStakeOfferId = stakeOfferId;
         emit StakeOfferCreated(stakeOfferId);
-    }
-
-    function getAllStakeOfferIds() external view returns (uint256[] memory) {
-        return allStakeOfferIds;
     }
 
     function discontinueStakeOffer(uint256 _stakeOfferId) external onlyOwner {
@@ -300,16 +270,15 @@ contract MogaStaking is Ownable, Pausable, ReentrancyGuard, DSMath {
         emit StakeOfferDiscontinued(_stakeOfferId);
     }
 
-    function getStakeDetails(
-        uint256 _stakeId
-    ) external view returns (Stake memory) {
-        return stakes[_stakeId];
+    function getStakeDetails(uint256 _stakeId) external view returns (Stake memory) {
+        Stake memory stake = stakes[_stakeId];
+        if (stake.owner != msg.sender && msg.sender != owner()) {
+            revert InvalidOwner(_stakeId, msg.sender);
+        }
+        return stake;
     }
 
-    function stakeFixedTerm(
-        uint256 _stakeOfferId,
-        uint256 _amount
-    ) external whenNotPaused nonReentrant {
+    function stakeFixedTerm(uint256 _stakeOfferId, uint256 _amount) external whenNotPaused nonReentrant {
         if (stakeOffers[_stakeOfferId].active == false) {
             revert StakeOfferNotActive(_stakeOfferId);
         }
@@ -320,16 +289,11 @@ contract MogaStaking is Ownable, Pausable, ReentrancyGuard, DSMath {
             revert InvalidAmount(_amount);
         }
         token.safeTransferFrom(msg.sender, address(this), _amount);
-        uint256 stakeId = stakeIds.length + 1;
-        stakes[stakeId] = Stake(
-            _stakeOfferId,
-            _amount,
-            block.timestamp,
-            msg.sender
-        );
+        uint256 stakeId = lastStakeId + 1;
+        stakes[stakeId] = Stake(_stakeOfferId, _amount, block.timestamp, msg.sender);
         stakeIdToStakeOffer[stakeId] = _stakeOfferId;
         holderToStakeIds[msg.sender].push(stakeId);
-        stakeIds.push(stakeId);
+        lastStakeId = stakeId;
 
         uint256 rewardRate = stakeOffers[_stakeOfferId].rate;
         uint256 duration = stakeOffers[_stakeOfferId].lockupDuration;
@@ -357,16 +321,11 @@ contract MogaStaking is Ownable, Pausable, ReentrancyGuard, DSMath {
             revert InvalidAmount(_amount);
         }
         token.safeTransferFrom(msg.sender, address(this), _amount);
-        uint256 stakeId = stakeIds.length + 1;
-        stakes[stakeId] = Stake(
-            _stakeOfferId,
-            _amount,
-            block.timestamp,
-            _beneficiary
-        );
+        uint256 stakeId = lastStakeId + 1;
+        stakes[stakeId] = Stake(_stakeOfferId, _amount, block.timestamp, _beneficiary);
         stakeIdToStakeOffer[stakeId] = _stakeOfferId;
         holderToStakeIds[_beneficiary].push(stakeId);
-        stakeIds.push(stakeId);
+        lastStakeId = stakeId;
 
         uint256 rewardRate = stakeOffers[_stakeOfferId].rate;
         uint256 duration = stakeOffers[_stakeOfferId].lockupDuration;
@@ -384,21 +343,19 @@ contract MogaStaking is Ownable, Pausable, ReentrancyGuard, DSMath {
      * 50% of unstake fee is burned according to whitepaper
      */
     function unStakeFixedTerm(uint256 _stakeId) external nonReentrant {
-        if (stakes[_stakeId].owner != msg.sender) {
-            revert InvalidOwner(_stakeId);
+        Stake storage stake = stakes[_stakeId];
+        if (stake.owner != msg.sender) {
+            revert InvalidOwner(_stakeId, msg.sender);
         }
-        if (stakes[_stakeId].principle <= 0) {
+        if (stake.principle <= 0) {
             revert StakeBalanceIsZero(_stakeId);
         }
-        if (
-            (block.timestamp - stakes[_stakeId].created) <=
-            stakeOffers[stakeIdToStakeOffer[_stakeId]].lockupDuration
-        ) {
+        if ((block.timestamp - stake.created) <= stakeOffers[stakeIdToStakeOffer[_stakeId]].lockupDuration) {
             revert StakeIsLocked(_stakeId);
         }
 
         uint256 balance = _rewards(_stakeId);
-        uint256 initialStake = stakes[_stakeId].principle;
+        uint256 initialStake = stake.principle;
 
         uint256 afterFee;
 
@@ -419,7 +376,7 @@ contract MogaStaking is Ownable, Pausable, ReentrancyGuard, DSMath {
 
         // we only transfer amount afterFees and 50% of that remains inaccessible in staking pool
         token.safeTransfer(msg.sender, afterFee);
-        stakes[_stakeId].principle = 0;
+        stake.principle = 0; // Persisted b/c stake is defined as `Stake storage`
 
         totalStaked -= initialStake;
         totalInterest -= balance - initialStake;
@@ -437,23 +394,17 @@ contract MogaStaking is Ownable, Pausable, ReentrancyGuard, DSMath {
      */
     function _rewards(uint256 _stakeId) internal view returns (uint256) {
         // make sure stake is only calculated against committed timestamp
-        Stake storage stake = stakes[_stakeId];
+        Stake memory stake = stakes[_stakeId];
 
         uint256 principle = stake.principle;
-        uint256 duration = stakeOffers[stakeIdToStakeOffer[_stakeId]]
-            .lockupDuration;
+        uint256 duration = stakeOffers[stakeIdToStakeOffer[_stakeId]].lockupDuration;
         uint256 stakeEndTime = stake.created + duration;
         uint256 rewardRate = stakeOffers[stakeIdToStakeOffer[_stakeId]].rate;
 
         uint256 ray = _yearlyRateToRay(rewardRate);
 
         if (stakeEndTime > block.timestamp) {
-            return
-                _accrueInterest(
-                    principle,
-                    ray,
-                    block.timestamp - stake.created
-                );
+            return _accrueInterest(principle, ray, block.timestamp - stake.created);
         } else {
             return _accrueInterest(principle, ray, duration);
         }
@@ -463,14 +414,35 @@ contract MogaStaking is Ownable, Pausable, ReentrancyGuard, DSMath {
      * @dev Returns all stakeIds.
      * @return array of all stakeIds.
      */
-    function getAllStakeIds() external view returns (uint256[] memory) {
-        return stakeIds;
+    function getLastStakeId() external view onlyOwner returns (uint256) {
+        return lastStakeId;
     }
 
-    function getAllStakeIdsOfAddress(
-        address _address
-    ) external view returns (uint256[] memory stakeIdsOfOwner) {
-        return holderToStakeIds[_address];
+    function getAllStakeIdsOfAddress(address _address, uint256 _start, uint256 _count) external view returns (uint256[] memory) {
+        if (_address != msg.sender && msg.sender != owner()) {
+            revert InvalidOwner(0, _address);
+        }
+
+        uint256[] memory stakeIds = holderToStakeIds[_address];
+        uint256 length = stakeIds.length;
+
+        require(_start < length, 'Start index out of bounds');
+
+        if (_start == 0 && length < _count) {
+            return stakeIds;
+        }
+
+        uint256 end = _start + _count;
+        if (end > length) {
+            end = length;
+        }
+
+        uint256[] memory paginatedIds = new uint256[](end - _start);
+        for (uint256 i = _start; i < end; i++) {
+            paginatedIds[i - _start] = stakeIds[i];
+        }
+
+        return paginatedIds;
     }
 
     /**
@@ -501,15 +473,15 @@ contract MogaStaking is Ownable, Pausable, ReentrancyGuard, DSMath {
             uint256 timeDelta = block.timestamp - lastIndexUpdateTimestamp;
             currentIndex = rmul(rewardIndex, rpow(flexibleRewardRate, timeDelta));
         }
-        
+
         // If user has no balance or no index yet, return 0
         if (flexibleBalanceOf[_user] == 0 || userRewardIndex[_user] == 0) {
             return 0;
         }
-        
+
         // Calculate new rewards based on index ratio
         uint256 newRewards = rmul(flexibleBalanceOf[_user], rdiv(currentIndex, userRewardIndex[_user])) - flexibleBalanceOf[_user];
-        
+
         // Add any previously unclaimed rewards
         return userUnclaimedRewards[_user] + newRewards;
     }
@@ -518,25 +490,25 @@ contract MogaStaking is Ownable, Pausable, ReentrancyGuard, DSMath {
      * @dev Stake tokens in the flexible staking system
      */
     function stakeFlexible(uint256 _amount) external whenNotPaused nonReentrant {
-        require(_amount > 0, "Cannot stake zero amount");
-        
+        require(_amount > 0, 'Cannot stake zero amount');
+
         // Update user's rewards first (if they already have a stake)
         updateUserRewards(msg.sender);
-        
+
         // Transfer tokens from user
         token.safeTransferFrom(msg.sender, address(this), _amount);
-        
+
         // Update user's balance
         flexibleBalanceOf[msg.sender] += _amount;
-        
+
         // If this is user's first stake, set their index snapshot
         if (userRewardIndex[msg.sender] == 0) {
             userRewardIndex[msg.sender] = rewardIndex;
         }
-        
+
         // Update total staked amount
         totalStaked += _amount;
-        
+
         emit DepositFlexible(msg.sender, _amount);
     }
 
@@ -547,35 +519,35 @@ contract MogaStaking is Ownable, Pausable, ReentrancyGuard, DSMath {
     function compoundFlexible(address _beneficiary) external nonReentrant {
         // First update the user's rewards
         updateUserRewards(_beneficiary);
-        
-        uint256 rewards = userUnclaimedRewards[_beneficiary];
-        if (rewards > 0) {
+
+        uint256 unclaimedRewards = userUnclaimedRewards[_beneficiary];
+        if (unclaimedRewards > 0) {
             uint256 afterFee;
-            
+
             // Apply fee if applicable
             if (flexibleFee > 0) {
-                uint256 feeAmount = (rewards * flexibleFee) / 100;
+                uint256 feeAmount = (unclaimedRewards * flexibleFee) / 100;
                 uint256 burnAmount = feeAmount / 2;
-                
+
                 // Burn half the fee
                 if (burnAmount > 0) {
                     token.burn(burnAmount);
                 }
-                
-                afterFee = rewards - feeAmount;
+
+                afterFee = unclaimedRewards - feeAmount;
             } else {
-                afterFee = rewards;
+                afterFee = unclaimedRewards;
             }
-            
+
             // Add rewards to principal
             flexibleBalanceOf[_beneficiary] += afterFee;
-            
+
             // Reset unclaimed rewards
             userUnclaimedRewards[_beneficiary] = 0;
-            
+
             // Update total staked amount
             totalStaked += afterFee;
-            
+
             emit CompoundFlexible(_beneficiary, afterFee);
         }
     }
@@ -590,38 +562,38 @@ contract MogaStaking is Ownable, Pausable, ReentrancyGuard, DSMath {
 
         // Update the user's rewards first
         updateUserRewards(msg.sender);
-        
+
         uint256 principal = flexibleBalanceOf[msg.sender];
-        uint256 rewards = userUnclaimedRewards[msg.sender];
+        uint256 unclaimedRewards = userUnclaimedRewards[msg.sender];
         uint256 afterFee;
-        
+
         // Apply fee to rewards if applicable
-        if (rewards > 0 && flexibleFee > 0) {
-            uint256 feeAmount = (rewards * flexibleFee) / 100;
+        if (unclaimedRewards > 0 && flexibleFee > 0) {
+            uint256 feeAmount = (unclaimedRewards * flexibleFee) / 100;
             uint256 burnAmount = feeAmount / 2;
-            
+
             // Burn half the fee
             if (burnAmount > 0) {
                 token.burn(burnAmount);
             }
-            
-            afterFee = rewards - feeAmount;
+
+            afterFee = unclaimedRewards - feeAmount;
         } else {
-            afterFee = rewards;
+            afterFee = unclaimedRewards;
         }
-        
+
         uint256 totalAmount = principal + afterFee;
-        
+
         // Reset user state
         flexibleBalanceOf[msg.sender] = 0;
         userUnclaimedRewards[msg.sender] = 0;
-        
+
         // Update total staked amount
         totalStaked -= principal;
-        
+
         // Transfer tokens to user
         token.safeTransfer(msg.sender, totalAmount);
-        
+
         emit WithdrawFlexible(msg.sender, totalAmount);
     }
 }

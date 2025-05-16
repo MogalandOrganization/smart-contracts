@@ -82,6 +82,11 @@ contract MogaStaking is Ownable, Pausable, ReentrancyGuard, DSMath {
     event WithdrawFlexible(address _address, uint256 _amount);
     event CompoundFlexible(address _address, uint256 _amount);
     event RewardIndexUpdated(uint256 _newIndex);
+    
+    // New events for critical operations
+    event FlexiblePrincipalUpdated(uint256 _oldAmount, uint256 _newAmount);
+    event ReservedRewardsUpdated(uint256 _oldAmount, uint256 _newAmount);
+    event TokensBurned(uint256 _amount);
 
     error FlexibleRewardRateInvalid(uint256 _rate);
     error FlexibleFeeInvalid(uint256 _fee);
@@ -226,7 +231,12 @@ contract MogaStaking is Ownable, Pausable, ReentrancyGuard, DSMath {
         // Update the reserved rewards accurately
         // Only add the net new rewards generated in this update
         if (newTotalUnclaimed > totalUnclaimedBefore) {
-            reservedFlexibleRewards += (newTotalUnclaimed - totalUnclaimedBefore);
+            uint256 oldReservedRewards = reservedFlexibleRewards;
+            uint256 newReservedRewards = oldReservedRewards + (newTotalUnclaimed - totalUnclaimedBefore);
+            reservedFlexibleRewards = newReservedRewards;
+            
+            // Emit event for tracking reserve changes
+            emit ReservedRewardsUpdated(oldReservedRewards, newReservedRewards);
         }
         
         // Update the global snapshot
@@ -441,6 +451,7 @@ contract MogaStaking is Ownable, Pausable, ReentrancyGuard, DSMath {
                 uint256 burnAmount = feeAmount / 2;
                 if (burnAmount > 0) {
                     token.burn(burnAmount);
+                    emit TokensBurned(burnAmount);
                 }
             } else {
                 // If fee amount rounds to zero, don't apply fee
@@ -654,7 +665,12 @@ contract MogaStaking is Ownable, Pausable, ReentrancyGuard, DSMath {
         totalStaked = newTotalStaked;
         
         // Update flexible principal tracking
-        totalFlexiblePrincipal += _amount;
+        uint256 oldFlexiblePrincipal = totalFlexiblePrincipal;
+        uint256 newFlexiblePrincipal = oldFlexiblePrincipal + _amount;
+        totalFlexiblePrincipal = newFlexiblePrincipal;
+        
+        // Emit event for tracking principal changes
+        emit FlexiblePrincipalUpdated(oldFlexiblePrincipal, newFlexiblePrincipal);
 
         emit DepositFlexible(msg.sender, _amount);
     }
@@ -736,6 +752,7 @@ contract MogaStaking is Ownable, Pausable, ReentrancyGuard, DSMath {
                     // Burn half the fee
                     if (burnAmount > 0) {
                         token.burn(burnAmount);
+                        emit TokensBurned(burnAmount);
                     }
 
                     afterFee = unclaimedRewards - feeAmount;
@@ -797,6 +814,7 @@ contract MogaStaking is Ownable, Pausable, ReentrancyGuard, DSMath {
                 // Burn half the fee
                 if (burnAmount > 0) {
                     token.burn(burnAmount);
+                    emit TokensBurned(burnAmount);
                 }
 
                 afterFee = unclaimedRewards - feeAmount;

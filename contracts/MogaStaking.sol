@@ -1,14 +1,14 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.20;
 
-import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
-import "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
-import "@openzeppelin/contracts/token/ERC20/extensions/ERC20Burnable.sol";
-import "@openzeppelin/contracts/utils/Pausable.sol";
-import "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
-import "@openzeppelin/contracts/access/Ownable.sol";
+import '@openzeppelin/contracts/token/ERC20/IERC20.sol';
+import '@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol';
+import '@openzeppelin/contracts/token/ERC20/extensions/ERC20Burnable.sol';
+import '@openzeppelin/contracts/utils/Pausable.sol';
+import '@openzeppelin/contracts/utils/ReentrancyGuard.sol';
+import '@openzeppelin/contracts/access/Ownable.sol';
 
-import "../lib/DSMath.sol";
+import '../lib/DSMath.sol';
 
 contract MogaStaking is Ownable, Pausable, ReentrancyGuard, DSMath {
     using SafeERC20 for ERC20Burnable;
@@ -37,10 +37,10 @@ contract MogaStaking is Ownable, Pausable, ReentrancyGuard, DSMath {
         address owner;
     }
 
-    uint256[] private allStakeOfferIds;
+    uint256 public lastStakeOfferId = 0;
     mapping(uint256 => StakeOffer) public stakeOffers;
 
-    uint256[] private stakeIds;
+    uint256 private lastStakeId = 0;
     mapping(uint256 => Stake) public stakes;
     mapping(uint256 => uint256) public stakeIdToStakeOffer;
     mapping(address => uint256) private holdersStakingCount;
@@ -57,32 +57,57 @@ contract MogaStaking is Ownable, Pausable, ReentrancyGuard, DSMath {
     error StakeBalanceIsZero(uint256 _stakeId);
     error StakeIsLocked(uint256 _stakeId);
     error InvalidAmount(uint256 _amount);
-    error InvalidOwner(uint256 _stakeId);
+    error InvalidOwner(uint256 _stakeId, address _address);
 
     // Flexible Staking logic
     /**
      * @dev
      * variables related to the flexible staking mechanism
-     *
+     * Using time-weighted accumulators for efficient reward tracking
      */
-    uint256 flexibleRewardRate = 0;
-    uint256 flexibleFee = 0;
+    uint256 public flexibleRewardRate = 0; // Current rate as RAY value
+    uint256 public flexibleFee = 0; // Current fee percentage
+    uint256 public rewardIndex; // Global accumulator for rewards (starts at RAY = 10^27)
+    uint256 public lastIndexUpdateTimestamp; // Last time rewardIndex was updated
 
-    mapping(address => uint256) public flexibleBalanceOf;
-    mapping(address => uint256) public flexibleLastUpdated;
+    mapping(address => uint256) public flexibleBalanceOf; // User's staked balance
+    mapping(address => uint256) public userRewardIndex; // User's snapshot of rewardIndex
+    mapping(address => uint256) public userUnclaimedRewards; // User's unclaimed rewards
+    address[] private flexibleStakers; // List of all flexible stakers
+    mapping(address => uint256) private flexibleStakerIndexes; // Index of each flexible staker in the list
 
     event FlexibleRewardRateModified(uint256 _newRate);
     event FlexibleFeeModified(uint256 _newFee);
     event DepositFlexible(address _address, uint256 _amount);
     event WithdrawFlexible(address _address, uint256 _amount);
     event CompoundFlexible(address _address, uint256 _amount);
+    event RewardIndexUpdated(uint256 _newIndex);
+    
+    // New events for critical operations
+    event FlexiblePrincipalUpdated(uint256 _oldAmount, uint256 _newAmount);
+    event ReservedRewardsUpdated(uint256 _oldAmount, uint256 _newAmount);
+    event TokensBurned(uint256 _amount);
 
     error FlexibleRewardRateInvalid(uint256 _rate);
     error FlexibleFeeInvalid(uint256 _fee);
     error FlexibleStakeBalanceIsZero(address _address);
 
+    error ZeroAddress();
+    
     constructor(address initialOwner, address token_) Ownable(initialOwner) {
+        // Validate addresses
+        if (initialOwner == address(0)) revert ZeroAddress();
+        if (token_ == address(0)) revert ZeroAddress();
+        
         token = ERC20Burnable(token_);
+        // Initialize rewardIndex to RAY (10^27) which represents 1.0 in ray format
+        rewardIndex = wadToRay(1 ether);
+        lastIndexUpdateTimestamp = block.timestamp;
+        
+        // Initialize tracking variables
+        totalFlexiblePrincipal = 0;
+        reservedFlexibleRewards = 0;
+        lastGlobalRewardsSnapshot = 0;
     }
 
     //// Fixed point scale factors
@@ -129,19 +154,11 @@ contract MogaStaking is Ownable, Pausable, ReentrancyGuard, DSMath {
      * @return The new principal as a wad. Equal to original principal +
      *   interest accrued
      */
-    function accrueInterest(
-        uint _principal,
-        uint _rate,
-        uint _age
-    ) external pure returns (uint) {
+    function accrueInterest(uint _principal, uint _rate, uint _age) external pure returns (uint) {
         return _accrueInterest(_principal, _rate, _age);
     }
 
-    function _accrueInterest(
-        uint _principal,
-        uint _rate,
-        uint _age
-    ) internal pure returns (uint) {
+    function _accrueInterest(uint _principal, uint _rate, uint _age) internal pure returns (uint) {
         return rmul(_principal, rpow(_rate, _age));
     }
 
@@ -161,23 +178,85 @@ contract MogaStaking is Ownable, Pausable, ReentrancyGuard, DSMath {
     }
 
     function _yearlyRateToRay(uint _rateWad) internal pure returns (uint) {
-        return
-            add(
-                wadToRay(1 ether),
-                rdiv(wadToRay(_rateWad), weiToRay(365 * 86400))
-            );
+        return add(wadToRay(1 ether), rdiv(wadToRay(_rateWad), weiToRay(365 * 86400)));
+    }
+
+    /**
+     * @dev Updates the global rewardIndex based on time elapsed and current rate
+     * This is called whenever users interact with the contract or rates change
+     */
+    function updateRewardIndex() internal {
+        uint256 currentTime = block.timestamp;
+        if (currentTime > lastIndexUpdateTimestamp && flexibleRewardRate > 0) {
+            uint256 timeDelta = currentTime - lastIndexUpdateTimestamp;
+            // Calculate new index with compound interest formula
+            rewardIndex = rmul(rewardIndex, rpow(flexibleRewardRate, timeDelta));
+            lastIndexUpdateTimestamp = currentTime;
+            emit RewardIndexUpdated(rewardIndex);
+        }
+    }
+
+    // Track the sum of all unclaimed rewards across all users
+    uint256 private lastGlobalRewardsSnapshot;
+    
+    /**
+     * @dev Updates a user's rewards based on their balance and the global index
+     * Stores the rewards in the userUnclaimedRewards mapping
+     * Manages the reserved rewards tracking in a way that prevents double-counting
+     */
+    function updateUserRewards(address _user) internal {
+        // Get the current sum of all unclaimed rewards before update
+        uint256 totalUnclaimedBefore = lastGlobalRewardsSnapshot;
+        
+        // First update the global index
+        uint256 oldRewardIndex = rewardIndex;
+        updateRewardIndex();
+
+        // If user has a balance and has a valid index snapshot
+        if (flexibleBalanceOf[_user] > 0 && userRewardIndex[_user] > 0) {
+            // Calculate new rewards using the index ratio
+            uint256 newRewards = rmul(flexibleBalanceOf[_user], rdiv(rewardIndex, userRewardIndex[_user])) - flexibleBalanceOf[_user];
+            
+            // Add to unclaimed rewards
+            userUnclaimedRewards[_user] += newRewards;
+        }
+
+        // Update user's index snapshot to current
+        userRewardIndex[_user] = rewardIndex;
+        
+        // Calculate the current sum of all unclaimed rewards
+        uint256 userReward = userUnclaimedRewards[_user];
+        uint256 newTotalUnclaimed = lastGlobalRewardsSnapshot + userReward;
+        
+        // Update the reserved rewards accurately
+        // Only add the net new rewards generated in this update
+        if (newTotalUnclaimed > totalUnclaimedBefore) {
+            uint256 oldReservedRewards = reservedFlexibleRewards;
+            uint256 newReservedRewards = oldReservedRewards + (newTotalUnclaimed - totalUnclaimedBefore);
+            reservedFlexibleRewards = newReservedRewards;
+            
+            // Emit event for tracking reserve changes
+            emit ReservedRewardsUpdated(oldReservedRewards, newReservedRewards);
+        }
+        
+        // Update the global snapshot
+        lastGlobalRewardsSnapshot = newTotalUnclaimed;
     }
 
     function setNewFlexibleRewardRate(uint256 _rate) public onlyOwner {
         if (_rate <= 0) {
             revert FlexibleRewardRateInvalid(_rate);
         }
+        // Update index with old rate before changing
+        updateRewardIndex();
         flexibleRewardRate = _yearlyRateToRay(_rate);
         emit FlexibleRewardRateModified(flexibleRewardRate);
     }
 
     function setNewFlexibleRewardFee(uint256 _fee) public onlyOwner {
-        if (_fee <= 0) {
+        // Allow fee to be 0 (no fee) or greater than 0
+        // This prevents reverting when fee is 0, which is a valid value
+        if (_fee > 100) {
             revert FlexibleFeeInvalid(_fee);
         }
         flexibleFee = _fee;
@@ -220,35 +299,19 @@ contract MogaStaking is Ownable, Pausable, ReentrancyGuard, DSMath {
      * @param amount the amount to withdraw
      */
     function withdraw(uint256 amount) external onlyOwner nonReentrant {
-        require(
-            getWithdrawableAmount() >= amount,
-            "TokenStaking: not enough withdrawable funds"
-        );
+        uint256 withdrawable = getWithdrawableAmount();
+        require(withdrawable >= amount, 'TokenStaking: not enough withdrawable funds');
+        require(token.balanceOf(address(this)) >= amount, 'TokenStaking: insufficient contract balance');
         token.safeTransfer(msg.sender, amount);
     }
 
-    function createStakeOffer(
-        uint256 _rate,
-        uint256 _fee,
-        uint256 _lockupDuration,
-        bool _onlyAdmin
-    ) external onlyOwner {
-        require(_lockupDuration > 0, "lockup duration must be > 0");
-        require(_rate > 0, "reward rate must be > 0");
-        uint256 stakeOfferId = allStakeOfferIds.length + 1;
-        stakeOffers[stakeOfferId] = StakeOffer(
-            _rate,
-            _fee,
-            _lockupDuration,
-            true,
-            _onlyAdmin
-        );
-        allStakeOfferIds.push(stakeOfferId);
+    function createStakeOffer(uint256 _rate, uint256 _fee, uint256 _lockupDuration, bool _onlyAdmin) external onlyOwner {
+        require(_lockupDuration > 0, 'lockup duration must be > 0');
+        require(_rate > 0, 'reward rate must be > 0');
+        uint256 stakeOfferId = lastStakeOfferId + 1;
+        stakeOffers[stakeOfferId] = StakeOffer(_rate, _fee, _lockupDuration, true, _onlyAdmin);
+        lastStakeOfferId = stakeOfferId;
         emit StakeOfferCreated(stakeOfferId);
-    }
-
-    function getAllStakeOfferIds() external view returns (uint256[] memory) {
-        return allStakeOfferIds;
     }
 
     function discontinueStakeOffer(uint256 _stakeOfferId) external onlyOwner {
@@ -256,44 +319,47 @@ contract MogaStaking is Ownable, Pausable, ReentrancyGuard, DSMath {
         emit StakeOfferDiscontinued(_stakeOfferId);
     }
 
-    function getStakeDetails(
-        uint256 _stakeId
-    ) external view returns (Stake memory) {
-        return stakes[_stakeId];
+    function getStakeDetails(uint256 _stakeId) external view returns (Stake memory) {
+        Stake memory stake = stakes[_stakeId];
+        if (stake.owner != msg.sender && msg.sender != owner()) {
+            revert InvalidOwner(_stakeId, msg.sender);
+        }
+        return stake;
     }
 
-    function stakeFixedTerm(
-        uint256 _stakeOfferId,
-        uint256 _amount
-    ) external whenNotPaused nonReentrant {
+    function stakeFixedTerm(uint256 _stakeOfferId, uint256 _amount) external whenNotPaused nonReentrant {
         if (stakeOffers[_stakeOfferId].active == false) {
             revert StakeOfferNotActive(_stakeOfferId);
         }
         if (stakeOffers[_stakeOfferId].onlyAdmin == true) {
             revert StakeOfferNotAccessible(_stakeOfferId);
         }
-        if (_amount < 0) {
+        if (_amount == 0) {
             revert InvalidAmount(_amount);
         }
         token.safeTransferFrom(msg.sender, address(this), _amount);
-        uint256 stakeId = stakeIds.length + 1;
-        stakes[stakeId] = Stake(
-            _stakeOfferId,
-            _amount,
-            block.timestamp,
-            msg.sender
-        );
+        uint256 stakeId = lastStakeId + 1;
+        stakes[stakeId] = Stake(_stakeOfferId, _amount, block.timestamp, msg.sender);
         stakeIdToStakeOffer[stakeId] = _stakeOfferId;
         holderToStakeIds[msg.sender].push(stakeId);
-        stakeIds.push(stakeId);
+        lastStakeId = stakeId;
 
         uint256 rewardRate = stakeOffers[_stakeOfferId].rate;
         uint256 duration = stakeOffers[_stakeOfferId].lockupDuration;
 
         uint256 ray = _yearlyRateToRay(rewardRate);
 
-        totalStaked += _amount;
-        totalInterest += _accrueInterest(_amount, ray, duration) - _amount;
+        // Check for overflow before adding to totalStaked
+        uint256 newTotalStaked = totalStaked + _amount;
+        require(newTotalStaked >= totalStaked, "TokenStaking: totalStaked overflow");
+        totalStaked = newTotalStaked;
+        
+        // Calculate interest and check for overflow
+        uint256 interest = _accrueInterest(_amount, ray, duration) - _amount;
+        uint256 newTotalInterest = totalInterest + interest;
+        require(newTotalInterest >= totalInterest, "TokenStaking: totalInterest overflow");
+        totalInterest = newTotalInterest;
+        
         emit Deposit(msg.sender, _amount, stakeId);
     }
 
@@ -309,28 +375,35 @@ contract MogaStaking is Ownable, Pausable, ReentrancyGuard, DSMath {
         if (stakeOffers[_stakeOfferId].active == false) {
             revert StakeOfferNotActive(_stakeOfferId);
         }
-        if (_amount < 0) {
+        if (_amount == 0) {
             revert InvalidAmount(_amount);
         }
+        if (_beneficiary == address(0)) {
+            revert ZeroAddress();
+        }
         token.safeTransferFrom(msg.sender, address(this), _amount);
-        uint256 stakeId = stakeIds.length + 1;
-        stakes[stakeId] = Stake(
-            _stakeOfferId,
-            _amount,
-            block.timestamp,
-            _beneficiary
-        );
+        uint256 stakeId = lastStakeId + 1;
+        stakes[stakeId] = Stake(_stakeOfferId, _amount, block.timestamp, _beneficiary);
         stakeIdToStakeOffer[stakeId] = _stakeOfferId;
         holderToStakeIds[_beneficiary].push(stakeId);
-        stakeIds.push(stakeId);
+        lastStakeId = stakeId;
 
         uint256 rewardRate = stakeOffers[_stakeOfferId].rate;
         uint256 duration = stakeOffers[_stakeOfferId].lockupDuration;
 
         uint256 ray = _yearlyRateToRay(rewardRate);
 
-        totalStaked += _amount;
-        totalInterest += _accrueInterest(_amount, ray, duration);
+        // Check for overflow before adding to totalStaked
+        uint256 newTotalStaked = totalStaked + _amount;
+        require(newTotalStaked >= totalStaked, "TokenStaking: totalStaked overflow");
+        totalStaked = newTotalStaked;
+        
+        // Calculate interest and check for overflow
+        uint256 interest = _accrueInterest(_amount, ray, duration) - _amount;
+        uint256 newTotalInterest = totalInterest + interest;
+        require(newTotalInterest >= totalInterest, "TokenStaking: totalInterest overflow");
+        totalInterest = newTotalInterest;
+        
         emit Deposit(_beneficiary, _amount, stakeId);
     }
 
@@ -338,44 +411,61 @@ contract MogaStaking is Ownable, Pausable, ReentrancyGuard, DSMath {
      * @dev unStake checks eligibility and takes the pre-determined fee into considerations
      * 50% of unstake fee goes back to the staking contract
      * 50% of unstake fee is burned according to whitepaper
+     * Handles discontinued stake offers properly by using the stored offer terms
      */
     function unStakeFixedTerm(uint256 _stakeId) external nonReentrant {
-        if (stakes[_stakeId].owner != msg.sender) {
-            revert InvalidOwner(_stakeId);
+        Stake storage stake = stakes[_stakeId];
+        uint256 stakeOfferId = stakeIdToStakeOffer[_stakeId];
+        
+        if (stake.owner != msg.sender) {
+            revert InvalidOwner(_stakeId, msg.sender);
         }
-        if (stakes[_stakeId].principle <= 0) {
+        if (stake.principle <= 0) {
             revert StakeBalanceIsZero(_stakeId);
         }
-        if (
-            (block.timestamp - stakes[_stakeId].created) <=
-            stakeOffers[stakeIdToStakeOffer[_stakeId]].lockupDuration
-        ) {
+        
+        // Compare against the original lockup duration, regardless of
+        // whether the stake offer was discontinued
+        if ((block.timestamp - stake.created) <= stakeOffers[stakeOfferId].lockupDuration) {
             revert StakeIsLocked(_stakeId);
         }
 
         uint256 balance = _rewards(_stakeId);
-        uint256 initialStake = stakes[_stakeId].principle;
+        uint256 initialStake = stake.principle;
 
         uint256 afterFee;
 
         uint256 fee = stakeOffers[stakeIdToStakeOffer[_stakeId]].fee;
-        if (fee > 0) {
-            uint256 diff = balance - initialStake;
+        uint256 diff = balance - initialStake;
+        
+        // Only apply fee if fee is greater than zero AND there's interest earned
+        if (fee > 0 && diff > 0) {
             // Calculate fee amount correctly - fee is a percentage of interest (diff)
             uint256 feeAmount = (diff * fee) / 100;
-            afterFee = balance - feeAmount;
+            
+            // Only apply fee if the amount is significant
+            if (feeAmount > 0) {
+                afterFee = balance - feeAmount;
 
-            // burn half of fee
-            uint256 burnAmount = feeAmount / 2;
-            // Add a check to prevent burning 0 tokens if feeAmount is very small
-            if (burnAmount > 0) {
-                token.burn(burnAmount);
+                // Burn half of fee
+                uint256 burnAmount = feeAmount / 2;
+                if (burnAmount > 0) {
+                    token.burn(burnAmount);
+                    emit TokensBurned(burnAmount);
+                }
+            } else {
+                // If fee amount rounds to zero, don't apply fee
+                afterFee = balance;
             }
-        } else afterFee = balance;
+        } else {
+            // No fee applied if fee is zero or no interest earned
+            afterFee = balance;
+        }
 
         // we only transfer amount afterFees and 50% of that remains inaccessible in staking pool
+        require(token.balanceOf(address(this)) >= afterFee, 'TokenStaking: insufficient contract balance');
         token.safeTransfer(msg.sender, afterFee);
-        stakes[_stakeId].principle = 0;
+        stake.principle = 0; // Persisted b/c stake is defined as `Stake storage`
 
         totalStaked -= initialStake;
         totalInterest -= balance - initialStake;
@@ -389,27 +479,29 @@ contract MogaStaking is Ownable, Pausable, ReentrancyGuard, DSMath {
     /**
      * @dev take duration since last update, multiply by account balance and
      * divide by rate multiplied by 1 hour (3600)
-     *
+     * Properly handles discontinued stake offers by using the stored offer properties
      */
     function _rewards(uint256 _stakeId) internal view returns (uint256) {
         // make sure stake is only calculated against committed timestamp
-        Stake storage stake = stakes[_stakeId];
+        Stake memory stake = stakes[_stakeId];
+        uint256 stakeOfferId = stakeIdToStakeOffer[_stakeId];
+        
+        // If principle is 0, this stake has been withdrawn or doesn't exist
+        if (stake.principle == 0) {
+            return 0;
+        }
 
         uint256 principle = stake.principle;
-        uint256 duration = stakeOffers[stakeIdToStakeOffer[_stakeId]]
-            .lockupDuration;
+        uint256 duration = stakeOffers[stakeOfferId].lockupDuration;
         uint256 stakeEndTime = stake.created + duration;
-        uint256 rewardRate = stakeOffers[stakeIdToStakeOffer[_stakeId]].rate;
+        uint256 rewardRate = stakeOffers[stakeOfferId].rate;
 
+        // Even if the stake offer is discontinued, we honor the agreed rate and duration
         uint256 ray = _yearlyRateToRay(rewardRate);
 
+        // Calculate interest based on current progress through the staking period
         if (stakeEndTime > block.timestamp) {
-            return
-                _accrueInterest(
-                    principle,
-                    ray,
-                    block.timestamp - stake.created
-                );
+            return _accrueInterest(principle, ray, block.timestamp - stake.created);
         } else {
             return _accrueInterest(principle, ray, duration);
         }
@@ -419,14 +511,35 @@ contract MogaStaking is Ownable, Pausable, ReentrancyGuard, DSMath {
      * @dev Returns all stakeIds.
      * @return array of all stakeIds.
      */
-    function getAllStakeIds() external view returns (uint256[] memory) {
-        return stakeIds;
+    function getLastStakeId() external view onlyOwner returns (uint256) {
+        return lastStakeId;
     }
 
-    function getAllStakeIdsOfAddress(
-        address _address
-    ) external view returns (uint256[] memory stakeIdsOfOwner) {
-        return holderToStakeIds[_address];
+    function getAllStakeIdsOfAddress(address _address, uint256 _start, uint256 _count) external view returns (uint256[] memory) {
+        if (_address != msg.sender && msg.sender != owner()) {
+            revert InvalidOwner(0, _address);
+        }
+
+        uint256[] memory stakeIds = holderToStakeIds[_address];
+        uint256 length = stakeIds.length;
+
+        require(_start < length, 'Start index out of bounds');
+
+        if (_start == 0 && length < _count) {
+            return stakeIds;
+        }
+
+        uint256 end = _start + _count;
+        if (end > length) {
+            end = length;
+        }
+
+        uint256[] memory paginatedIds = new uint256[](end - _start);
+        for (uint256 i = _start; i < end; i++) {
+            paginatedIds[i - _start] = stakeIds[i];
+        }
+
+        return paginatedIds;
     }
 
     /**
@@ -437,92 +550,328 @@ contract MogaStaking is Ownable, Pausable, ReentrancyGuard, DSMath {
         return block.timestamp;
     }
 
+    // Track total flexible rewards to avoid expensive iteration
+    uint256 private totalFlexiblePrincipal;
+    uint256 private reservedFlexibleRewards;
+    
     /**
      * @dev Returns the amount of tokens that can be withdrawn by the owner.
-     * @return the amount of tokens
+     * This function uses tracking variables instead of iteration for better scalability.
+     * @return the amount of tokens safely withdrawable by the owner
      */
     function getWithdrawableAmount() public view returns (uint256) {
-        return token.balanceOf(address(this)) - totalStaked;
+        uint256 contractBalance = token.balanceOf(address(this));
+        
+        // Calculate total committed tokens (principal + accrued interest)
+        // For fixed term stakes, we use totalStaked and totalInterest
+        
+        // For flexible stakes, we use a conservative estimate based on:
+        // 1. Current total flexible principal
+        // 2. Maximum potential growth based on time since last update
+        // 3. Reserved rewards from previous calculations
+        
+        // Calculate maximum potential growth factor since last index update
+        uint256 maxGrowthFactor = 0;
+        if (block.timestamp > lastIndexUpdateTimestamp && flexibleRewardRate > 0) {
+            uint256 timeDelta = block.timestamp - lastIndexUpdateTimestamp;
+            // Calculate maximum growth using current rate
+            uint256 currentIndex = rmul(rewardIndex, rpow(flexibleRewardRate, timeDelta));
+            maxGrowthFactor = rdiv(currentIndex, rewardIndex);
+        } else {
+            // No growth if no time has passed or rate is 0
+            maxGrowthFactor = wadToRay(1 ether); // RAY value for 1.0
+        }
+        
+        // Calculate conservative estimate of flexible rewards
+        // This overestimates rewards to ensure safety
+        uint256 totalFlexibleRewards = 0;
+        if (totalFlexiblePrincipal > 0) {
+            // Estimate maximum potential rewards by applying growth factor to all principal
+            uint256 maxPotentialValue = rmul(totalFlexiblePrincipal, maxGrowthFactor);
+            totalFlexibleRewards = maxPotentialValue > totalFlexiblePrincipal 
+                ? (maxPotentialValue - totalFlexiblePrincipal) + reservedFlexibleRewards 
+                : reservedFlexibleRewards;
+        } else {
+            totalFlexibleRewards = reservedFlexibleRewards;
+        }
+        
+        // Calculate total committed tokens
+        uint256 totalCommitted = totalStaked + totalInterest + totalFlexibleRewards;
+        
+        // Return withdrawable amount, ensuring it doesn't go negative
+        if (contractBalance > totalCommitted) {
+            return contractBalance - totalCommitted;
+        } else {
+            return 0;
+        }
     }
 
-    // flexible staking logic
-    function stakeFlexible(uint256 amount_) external {
-        _stakeFlexible(amount_);
-    }
+    // flexible staking logic with time-weighted accumulator system
+    /**
+     * @dev Get current rewards for a user without modifying state
+     * Calculates using the current rewardIndex and the user's snapshot
+     */
+    function rewardsFlexible(address _user) external view returns (uint256) {
+        // Get the current index value (if it needs updating)
+        uint256 currentIndex = rewardIndex;
+        if (block.timestamp > lastIndexUpdateTimestamp && flexibleRewardRate > 0) {
+            uint256 timeDelta = block.timestamp - lastIndexUpdateTimestamp;
+            currentIndex = rmul(rewardIndex, rpow(flexibleRewardRate, timeDelta));
+        }
 
-    function _stakeFlexible(uint256 amount_) internal {
-        token.safeTransferFrom(msg.sender, address(this), amount_);
-        flexibleBalanceOf[msg.sender] += amount_;
-        flexibleLastUpdated[msg.sender] = block.timestamp;
-        totalStaked += amount_;
-        emit DepositFlexible(msg.sender, amount_);
-    }
+        // If user has no balance or no index yet, return 0
+        if (flexibleBalanceOf[_user] == 0 || userRewardIndex[_user] == 0) {
+            return 0;
+        }
 
-    function rewardsFlexible(address address_) external view returns (uint256) {
-        return _rewardsFlexible(address_);
-    }
+        // Calculate new rewards based on index ratio
+        uint256 newRewards = rmul(flexibleBalanceOf[_user], rdiv(currentIndex, userRewardIndex[_user])) - flexibleBalanceOf[_user];
 
-    function _rewardsFlexible(
-        address address_
-    ) internal view returns (uint256) {
-        uint256 duration = block.timestamp - flexibleLastUpdated[address_];
-        uint256 principle = flexibleBalanceOf[address_];
-
-        return _accrueInterest(principle, flexibleRewardRate, duration);
+        // Add any previously unclaimed rewards
+        return userUnclaimedRewards[_user] + newRewards;
     }
 
     /**
-     * @dev Anyone can execute the compoundFlexible method to enable automatic backend systems
-     * Prior to modifying the flexibleRewardRate it is required that backend executes compounding on
-     * behalf of all active flexible stakers
-     * Since the rewardRate and fee are both flexible, every compounding needs to calculate and burn fees accordingly
+     * @dev Stake tokens in the flexible staking system
+     */
+    function stakeFlexible(uint256 _amount) external whenNotPaused nonReentrant {
+        require(_amount > 0, 'Cannot stake zero amount');
+
+        // Keep track of all flexible stakers
+        if (flexibleStakerIndexes[msg.sender] == 0) {
+            flexibleStakers.push(msg.sender);
+            flexibleStakerIndexes[msg.sender] = flexibleStakers.length;
+        }
+
+        // Update user's rewards first (if they already have a stake)
+        updateUserRewards(msg.sender);
+
+        // Transfer tokens from user
+        token.safeTransferFrom(msg.sender, address(this), _amount);
+
+        // Update user's balance with overflow check
+        uint256 newUserBalance = flexibleBalanceOf[msg.sender] + _amount;
+        require(newUserBalance >= flexibleBalanceOf[msg.sender], "TokenStaking: user balance overflow");
+        flexibleBalanceOf[msg.sender] = newUserBalance;
+
+        // If this is user's first stake, set their index snapshot
+        if (userRewardIndex[msg.sender] == 0) {
+            userRewardIndex[msg.sender] = rewardIndex;
+        }
+
+        // Update total staked amount with overflow check
+        uint256 newTotalStaked = totalStaked + _amount;
+        require(newTotalStaked >= totalStaked, "TokenStaking: totalStaked overflow");
+        totalStaked = newTotalStaked;
+        
+        // Update flexible principal tracking
+        uint256 oldFlexiblePrincipal = totalFlexiblePrincipal;
+        uint256 newFlexiblePrincipal = oldFlexiblePrincipal + _amount;
+        totalFlexiblePrincipal = newFlexiblePrincipal;
+        
+        // Emit event for tracking principal changes
+        emit FlexiblePrincipalUpdated(oldFlexiblePrincipal, newFlexiblePrincipal);
+
+        emit DepositFlexible(msg.sender, _amount);
+    }
+
+    /**
+     * @dev Get the count of flexible stakers
+     * @return The total number of flexible stakers
+     */
+    function getFlexibleStakersCount() external view onlyOwner returns (uint256) {
+        return flexibleStakers.length;
+    }
+    
+    /**
+     * @dev Get a paginated list of flexible stakers
+     * @param _start The starting index
+     * @param _count The maximum number of addresses to return
+     * @return A paginated list of staker addresses
+     */
+    function getFlexibleStakers(uint256 _start, uint256 _count) external view onlyOwner returns (address[] memory) {
+        address[] memory stakers = flexibleStakers;
+        uint256 length = stakers.length;
+
+        // Handle empty array case
+        if (length == 0) {
+            return new address[](0);
+        }
+        
+        // Validate start index
+        require(_start < length, 'Start index out of bounds');
+        
+        // Limit batch size to prevent excessive gas usage
+        uint256 maxBatchSize = 100;
+        uint256 actualCount = _count > maxBatchSize ? maxBatchSize : _count;
+
+        // Return entire array if it fits within the requested range and max batch size
+        if (_start == 0 && length <= actualCount) {
+            return stakers;
+        }
+
+        // Calculate end index within bounds
+        uint256 end = _start + actualCount;
+        if (end > length) {
+            end = length;
+        }
+
+        // Create and populate result array
+        address[] memory paginatedAddresses = new address[](end - _start);
+        for (uint256 i = _start; i < end; i++) {
+            paginatedAddresses[i - _start] = stakers[i];
+        }
+
+        return paginatedAddresses;
+    }
+
+    /**
+     * @dev Compound rewards into principal for a user
+     * Can be called by anyone to enable automation
      */
     function compoundFlexible(address _beneficiary) external nonReentrant {
-        _compoundFlexible(_beneficiary);
-    }
+        if (_beneficiary == address(0)) {
+            revert ZeroAddress();
+        }
+        
+        // First update the user's rewards
+        updateUserRewards(_beneficiary);
 
-    function _compoundFlexible(address _beneficiary) internal {
-        uint256 balance = _rewardsFlexible(_beneficiary);
-        uint256 initialStake = flexibleBalanceOf[_beneficiary];
+        uint256 unclaimedRewards = userUnclaimedRewards[_beneficiary];
+        if (unclaimedRewards > 0) {
+            uint256 afterFee;
 
-        uint256 afterFee;
-        uint256 burnAmount;
+            // Apply fee if applicable
+            if (flexibleFee > 0 && unclaimedRewards > 0) {
+                uint256 feeAmount = (unclaimedRewards * flexibleFee) / 100;
+                
+                // Only apply fee if the amount is significant
+                if (feeAmount > 0) {
+                    uint256 burnAmount = feeAmount / 2;
 
-        if (flexibleFee > 0) {
-            uint256 diff = balance - initialStake;
-            // Calculate fee amount correctly - fee is a percentage of interest (diff)
-            uint256 feeAmount = (diff * flexibleFee) / 100;
-            afterFee = balance - feeAmount;
+                    // Burn half the fee
+                    if (burnAmount > 0) {
+                        token.burn(burnAmount);
+                        emit TokensBurned(burnAmount);
+                    }
 
-            // burn half of fee
-            burnAmount = feeAmount / 2;
-            // Add a check to prevent burning 0 tokens if feeAmount is very small
-            if (burnAmount > 0) {
-                token.burn(burnAmount);
+                    afterFee = unclaimedRewards - feeAmount;
+                } else {
+                    // If fee amount rounds to zero, don't apply fee
+                    afterFee = unclaimedRewards;
+                }
+            } else {
+                // No fee applied if fee is zero or no rewards earned
+                afterFee = unclaimedRewards;
             }
-        } else afterFee = balance;
 
-        flexibleBalanceOf[_beneficiary] = afterFee;
-        flexibleLastUpdated[_beneficiary] = block.timestamp;
-        totalStaked -= initialStake;
-        totalStaked += afterFee;
-        emit CompoundFlexible(_beneficiary, afterFee);
+            // Add rewards to principal
+            flexibleBalanceOf[_beneficiary] += afterFee;
+
+            // Reset unclaimed rewards
+            userUnclaimedRewards[_beneficiary] = 0;
+
+            // Update total staked amount
+            totalStaked += afterFee;
+            
+            // Update flexible principal tracking
+            totalFlexiblePrincipal += afterFee;
+            
+            // Since we're converting rewards to principal, we can reduce the reserved rewards
+            if (afterFee <= reservedFlexibleRewards) {
+                reservedFlexibleRewards -= afterFee;
+            } else {
+                reservedFlexibleRewards = 0;
+            }
+
+            emit CompoundFlexible(_beneficiary, afterFee);
+        }
     }
 
     /**
-     * @dev withdrawing the full flexible staked amount
-     * resetting flexibleBalance to zero
+     * @dev Withdraw all tokens from flexible staking
      */
     function withdrawFlexible() external nonReentrant {
         if (flexibleBalanceOf[msg.sender] <= 0) {
             revert FlexibleStakeBalanceIsZero(msg.sender);
         }
 
-        _compoundFlexible(msg.sender);
-        uint256 amount = flexibleBalanceOf[msg.sender];
+        // Update the user's rewards first
+        updateUserRewards(msg.sender);
+
+        uint256 principal = flexibleBalanceOf[msg.sender];
+        uint256 unclaimedRewards = userUnclaimedRewards[msg.sender];
+        uint256 afterFee;
+
+        // Apply fee to rewards if applicable
+        if (unclaimedRewards > 0 && flexibleFee > 0) {
+            uint256 feeAmount = (unclaimedRewards * flexibleFee) / 100;
+            
+            // Only apply fee if the amount is significant
+            if (feeAmount > 0) {
+                uint256 burnAmount = feeAmount / 2;
+
+                // Burn half the fee
+                if (burnAmount > 0) {
+                    token.burn(burnAmount);
+                    emit TokensBurned(burnAmount);
+                }
+
+                afterFee = unclaimedRewards - feeAmount;
+            } else {
+                // If fee amount rounds to zero, don't apply fee
+                afterFee = unclaimedRewards;
+            }
+        } else {
+            // No fee applied if fee is zero or no rewards earned
+            afterFee = unclaimedRewards;
+        }
+
+        uint256 totalAmount = principal + afterFee;
+
+        // Reset user state
         flexibleBalanceOf[msg.sender] = 0;
-        totalStaked -= amount;
-        token.safeTransfer(msg.sender, amount);
-        emit WithdrawFlexible(msg.sender, amount);
+        userUnclaimedRewards[msg.sender] = 0;
+
+        // Remove user from flexibleStakers array if they exist
+        uint256 stakerIndex = flexibleStakerIndexes[msg.sender];
+        if (stakerIndex > 0) {
+            // Arrays are 1-indexed in our mapping for easier existence check
+            uint256 actualIndex = stakerIndex - 1;
+            uint256 lastIndex = flexibleStakers.length - 1;
+            
+            // If user isn't the last element, swap with the last element
+            if (actualIndex != lastIndex) {
+                address lastStaker = flexibleStakers[lastIndex];
+                flexibleStakers[actualIndex] = lastStaker;
+                // Update the index for the swapped element
+                flexibleStakerIndexes[lastStaker] = stakerIndex;
+            }
+            
+            // Remove the last element
+            flexibleStakers.pop();
+            // Reset the index for the removed user
+            flexibleStakerIndexes[msg.sender] = 0;
+        }
+
+        // Update total staked amount
+        totalStaked -= principal;
+        
+        // Update flexible principal tracking
+        totalFlexiblePrincipal -= principal;
+        
+        // Add any unclaimed rewards to the reserved amount
+        // This ensures rewards are still accounted for even after users withdraw
+        if (afterFee > 0) {
+            reservedFlexibleRewards += afterFee;
+        }
+
+        // Check contract balance before transfer
+        require(token.balanceOf(address(this)) >= totalAmount, 'TokenStaking: insufficient contract balance');
+        
+        // Transfer tokens to user
+        token.safeTransfer(msg.sender, totalAmount);
+
+        emit WithdrawFlexible(msg.sender, totalAmount);
     }
 }

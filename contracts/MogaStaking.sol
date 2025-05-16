@@ -87,7 +87,13 @@ contract MogaStaking is Ownable, Pausable, ReentrancyGuard, DSMath {
     error FlexibleFeeInvalid(uint256 _fee);
     error FlexibleStakeBalanceIsZero(address _address);
 
+    error ZeroAddress();
+    
     constructor(address initialOwner, address token_) Ownable(initialOwner) {
+        // Validate addresses
+        if (initialOwner == address(0)) revert ZeroAddress();
+        if (token_ == address(0)) revert ZeroAddress();
+        
         token = ERC20Burnable(token_);
         // Initialize rewardIndex to RAY (10^27) which represents 1.0 in ray format
         rewardIndex = wadToRay(1 ether);
@@ -361,6 +367,9 @@ contract MogaStaking is Ownable, Pausable, ReentrancyGuard, DSMath {
         }
         if (_amount == 0) {
             revert InvalidAmount(_amount);
+        }
+        if (_beneficiary == address(0)) {
+            revert ZeroAddress();
         }
         token.safeTransferFrom(msg.sender, address(this), _amount);
         uint256 stakeId = lastStakeId + 1;
@@ -705,6 +714,10 @@ contract MogaStaking is Ownable, Pausable, ReentrancyGuard, DSMath {
      * Can be called by anyone to enable automation
      */
     function compoundFlexible(address _beneficiary) external nonReentrant {
+        if (_beneficiary == address(0)) {
+            revert ZeroAddress();
+        }
+        
         // First update the user's rewards
         updateUserRewards(_beneficiary);
 

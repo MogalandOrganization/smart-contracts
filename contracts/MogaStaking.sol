@@ -211,7 +211,9 @@ contract MogaStaking is Ownable, Pausable, ReentrancyGuard, DSMath {
     }
 
     function setNewFlexibleRewardFee(uint256 _fee) public onlyOwner {
-        if (_fee <= 0) {
+        // Allow fee to be 0 (no fee) or greater than 0
+        // This prevents reverting when fee is 0, which is a valid value
+        if (_fee > 100) {
             revert FlexibleFeeInvalid(_fee);
         }
         flexibleFee = _fee;
@@ -255,6 +257,7 @@ contract MogaStaking is Ownable, Pausable, ReentrancyGuard, DSMath {
      */
     function withdraw(uint256 amount) external onlyOwner nonReentrant {
         require(getWithdrawableAmount() >= amount, 'TokenStaking: not enough withdrawable funds');
+        require(token.balanceOf(address(this)) >= amount, 'TokenStaking: insufficient contract balance');
         token.safeTransfer(msg.sender, amount);
     }
 
@@ -287,7 +290,7 @@ contract MogaStaking is Ownable, Pausable, ReentrancyGuard, DSMath {
         if (stakeOffers[_stakeOfferId].onlyAdmin == true) {
             revert StakeOfferNotAccessible(_stakeOfferId);
         }
-        if (_amount < 0) {
+        if (_amount == 0) {
             revert InvalidAmount(_amount);
         }
         token.safeTransferFrom(msg.sender, address(this), _amount);
@@ -319,7 +322,7 @@ contract MogaStaking is Ownable, Pausable, ReentrancyGuard, DSMath {
         if (stakeOffers[_stakeOfferId].active == false) {
             revert StakeOfferNotActive(_stakeOfferId);
         }
-        if (_amount < 0) {
+        if (_amount == 0) {
             revert InvalidAmount(_amount);
         }
         token.safeTransferFrom(msg.sender, address(this), _amount);
@@ -335,7 +338,8 @@ contract MogaStaking is Ownable, Pausable, ReentrancyGuard, DSMath {
         uint256 ray = _yearlyRateToRay(rewardRate);
 
         totalStaked += _amount;
-        totalInterest += _accrueInterest(_amount, ray, duration);
+        // Fix the inconsistent interest calculation
+        totalInterest += _accrueInterest(_amount, ray, duration) - _amount;
         emit Deposit(_beneficiary, _amount, stakeId);
     }
 
@@ -377,6 +381,7 @@ contract MogaStaking is Ownable, Pausable, ReentrancyGuard, DSMath {
         } else afterFee = balance;
 
         // we only transfer amount afterFees and 50% of that remains inaccessible in staking pool
+        require(token.balanceOf(address(this)) >= afterFee, 'TokenStaking: insufficient contract balance');
         token.safeTransfer(msg.sender, afterFee);
         stake.principle = 0; // Persisted b/c stake is defined as `Stake storage`
 
@@ -619,9 +624,33 @@ contract MogaStaking is Ownable, Pausable, ReentrancyGuard, DSMath {
         flexibleBalanceOf[msg.sender] = 0;
         userUnclaimedRewards[msg.sender] = 0;
 
+        // Remove user from flexibleStakers array if they exist
+        uint256 stakerIndex = flexibleStakerIndexes[msg.sender];
+        if (stakerIndex > 0) {
+            // Arrays are 1-indexed in our mapping for easier existence check
+            uint256 actualIndex = stakerIndex - 1;
+            uint256 lastIndex = flexibleStakers.length - 1;
+            
+            // If user isn't the last element, swap with the last element
+            if (actualIndex != lastIndex) {
+                address lastStaker = flexibleStakers[lastIndex];
+                flexibleStakers[actualIndex] = lastStaker;
+                // Update the index for the swapped element
+                flexibleStakerIndexes[lastStaker] = stakerIndex;
+            }
+            
+            // Remove the last element
+            flexibleStakers.pop();
+            // Reset the index for the removed user
+            flexibleStakerIndexes[msg.sender] = 0;
+        }
+
         // Update total staked amount
         totalStaked -= principal;
 
+        // Check contract balance before transfer
+        require(token.balanceOf(address(this)) >= totalAmount, 'TokenStaking: insufficient contract balance');
+        
         // Transfer tokens to user
         token.safeTransfer(msg.sender, totalAmount);
 

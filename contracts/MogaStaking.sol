@@ -650,21 +650,48 @@ contract MogaStaking is Ownable, Pausable, ReentrancyGuard, DSMath {
         emit DepositFlexible(msg.sender, _amount);
     }
 
+    /**
+     * @dev Get the count of flexible stakers
+     * @return The total number of flexible stakers
+     */
+    function getFlexibleStakersCount() external view onlyOwner returns (uint256) {
+        return flexibleStakers.length;
+    }
+    
+    /**
+     * @dev Get a paginated list of flexible stakers
+     * @param _start The starting index
+     * @param _count The maximum number of addresses to return
+     * @return A paginated list of staker addresses
+     */
     function getFlexibleStakers(uint256 _start, uint256 _count) external view onlyOwner returns (address[] memory) {
         address[] memory stakers = flexibleStakers;
         uint256 length = stakers.length;
 
+        // Handle empty array case
+        if (length == 0) {
+            return new address[](0);
+        }
+        
+        // Validate start index
         require(_start < length, 'Start index out of bounds');
+        
+        // Limit batch size to prevent excessive gas usage
+        uint256 maxBatchSize = 100;
+        uint256 actualCount = _count > maxBatchSize ? maxBatchSize : _count;
 
-        if (_start == 0 && length < _count) {
+        // Return entire array if it fits within the requested range and max batch size
+        if (_start == 0 && length <= actualCount) {
             return stakers;
         }
 
-        uint256 end = _start + _count;
+        // Calculate end index within bounds
+        uint256 end = _start + actualCount;
         if (end > length) {
             end = length;
         }
 
+        // Create and populate result array
         address[] memory paginatedAddresses = new address[](end - _start);
         for (uint256 i = _start; i < end; i++) {
             paginatedAddresses[i - _start] = stakers[i];

@@ -92,6 +92,11 @@ contract MogaStaking is Ownable, Pausable, ReentrancyGuard, DSMath {
         // Initialize rewardIndex to RAY (10^27) which represents 1.0 in ray format
         rewardIndex = wadToRay(1 ether);
         lastIndexUpdateTimestamp = block.timestamp;
+        
+        // Initialize tracking variables
+        totalFlexiblePrincipal = 0;
+        reservedFlexibleRewards = 0;
+        lastGlobalRewardsSnapshot = 0;
     }
 
     //// Fixed point scale factors
@@ -180,24 +185,46 @@ contract MogaStaking is Ownable, Pausable, ReentrancyGuard, DSMath {
         }
     }
 
+    // Track the sum of all unclaimed rewards across all users
+    uint256 private lastGlobalRewardsSnapshot;
+    
     /**
      * @dev Updates a user's rewards based on their balance and the global index
      * Stores the rewards in the userUnclaimedRewards mapping
+     * Manages the reserved rewards tracking in a way that prevents double-counting
      */
     function updateUserRewards(address _user) internal {
+        // Get the current sum of all unclaimed rewards before update
+        uint256 totalUnclaimedBefore = lastGlobalRewardsSnapshot;
+        
         // First update the global index
+        uint256 oldRewardIndex = rewardIndex;
         updateRewardIndex();
 
         // If user has a balance and has a valid index snapshot
         if (flexibleBalanceOf[_user] > 0 && userRewardIndex[_user] > 0) {
             // Calculate new rewards using the index ratio
             uint256 newRewards = rmul(flexibleBalanceOf[_user], rdiv(rewardIndex, userRewardIndex[_user])) - flexibleBalanceOf[_user];
+            
             // Add to unclaimed rewards
             userUnclaimedRewards[_user] += newRewards;
         }
 
         // Update user's index snapshot to current
         userRewardIndex[_user] = rewardIndex;
+        
+        // Calculate the current sum of all unclaimed rewards
+        uint256 userReward = userUnclaimedRewards[_user];
+        uint256 newTotalUnclaimed = lastGlobalRewardsSnapshot + userReward;
+        
+        // Update the reserved rewards accurately
+        // Only add the net new rewards generated in this update
+        if (newTotalUnclaimed > totalUnclaimedBefore) {
+            reservedFlexibleRewards += (newTotalUnclaimed - totalUnclaimedBefore);
+        }
+        
+        // Update the global snapshot
+        lastGlobalRewardsSnapshot = newTotalUnclaimed;
     }
 
     function setNewFlexibleRewardRate(uint256 _rate) public onlyOwner {
@@ -256,7 +283,8 @@ contract MogaStaking is Ownable, Pausable, ReentrancyGuard, DSMath {
      * @param amount the amount to withdraw
      */
     function withdraw(uint256 amount) external onlyOwner nonReentrant {
-        require(getWithdrawableAmount() >= amount, 'TokenStaking: not enough withdrawable funds');
+        uint256 withdrawable = getWithdrawableAmount();
+        require(withdrawable >= amount, 'TokenStaking: not enough withdrawable funds');
         require(token.balanceOf(address(this)) >= amount, 'TokenStaking: insufficient contract balance');
         token.safeTransfer(msg.sender, amount);
     }
@@ -305,8 +333,17 @@ contract MogaStaking is Ownable, Pausable, ReentrancyGuard, DSMath {
 
         uint256 ray = _yearlyRateToRay(rewardRate);
 
-        totalStaked += _amount;
-        totalInterest += _accrueInterest(_amount, ray, duration) - _amount;
+        // Check for overflow before adding to totalStaked
+        uint256 newTotalStaked = totalStaked + _amount;
+        require(newTotalStaked >= totalStaked, "TokenStaking: totalStaked overflow");
+        totalStaked = newTotalStaked;
+        
+        // Calculate interest and check for overflow
+        uint256 interest = _accrueInterest(_amount, ray, duration) - _amount;
+        uint256 newTotalInterest = totalInterest + interest;
+        require(newTotalInterest >= totalInterest, "TokenStaking: totalInterest overflow");
+        totalInterest = newTotalInterest;
+        
         emit Deposit(msg.sender, _amount, stakeId);
     }
 
@@ -337,9 +374,17 @@ contract MogaStaking is Ownable, Pausable, ReentrancyGuard, DSMath {
 
         uint256 ray = _yearlyRateToRay(rewardRate);
 
-        totalStaked += _amount;
-        // Fix the inconsistent interest calculation
-        totalInterest += _accrueInterest(_amount, ray, duration) - _amount;
+        // Check for overflow before adding to totalStaked
+        uint256 newTotalStaked = totalStaked + _amount;
+        require(newTotalStaked >= totalStaked, "TokenStaking: totalStaked overflow");
+        totalStaked = newTotalStaked;
+        
+        // Calculate interest and check for overflow
+        uint256 interest = _accrueInterest(_amount, ray, duration) - _amount;
+        uint256 newTotalInterest = totalInterest + interest;
+        require(newTotalInterest >= totalInterest, "TokenStaking: totalInterest overflow");
+        totalInterest = newTotalInterest;
+        
         emit Deposit(_beneficiary, _amount, stakeId);
     }
 
@@ -347,16 +392,22 @@ contract MogaStaking is Ownable, Pausable, ReentrancyGuard, DSMath {
      * @dev unStake checks eligibility and takes the pre-determined fee into considerations
      * 50% of unstake fee goes back to the staking contract
      * 50% of unstake fee is burned according to whitepaper
+     * Handles discontinued stake offers properly by using the stored offer terms
      */
     function unStakeFixedTerm(uint256 _stakeId) external nonReentrant {
         Stake storage stake = stakes[_stakeId];
+        uint256 stakeOfferId = stakeIdToStakeOffer[_stakeId];
+        
         if (stake.owner != msg.sender) {
             revert InvalidOwner(_stakeId, msg.sender);
         }
         if (stake.principle <= 0) {
             revert StakeBalanceIsZero(_stakeId);
         }
-        if ((block.timestamp - stake.created) <= stakeOffers[stakeIdToStakeOffer[_stakeId]].lockupDuration) {
+        
+        // Compare against the original lockup duration, regardless of
+        // whether the stake offer was discontinued
+        if ((block.timestamp - stake.created) <= stakeOffers[stakeOfferId].lockupDuration) {
             revert StakeIsLocked(_stakeId);
         }
 
@@ -366,19 +417,30 @@ contract MogaStaking is Ownable, Pausable, ReentrancyGuard, DSMath {
         uint256 afterFee;
 
         uint256 fee = stakeOffers[stakeIdToStakeOffer[_stakeId]].fee;
-        if (fee > 0) {
-            uint256 diff = balance - initialStake;
+        uint256 diff = balance - initialStake;
+        
+        // Only apply fee if fee is greater than zero AND there's interest earned
+        if (fee > 0 && diff > 0) {
             // Calculate fee amount correctly - fee is a percentage of interest (diff)
             uint256 feeAmount = (diff * fee) / 100;
-            afterFee = balance - feeAmount;
+            
+            // Only apply fee if the amount is significant
+            if (feeAmount > 0) {
+                afterFee = balance - feeAmount;
 
-            // burn half of fee
-            uint256 burnAmount = feeAmount / 2;
-            // Add a check to prevent burning 0 tokens if feeAmount is very small
-            if (burnAmount > 0) {
-                token.burn(burnAmount);
+                // Burn half of fee
+                uint256 burnAmount = feeAmount / 2;
+                if (burnAmount > 0) {
+                    token.burn(burnAmount);
+                }
+            } else {
+                // If fee amount rounds to zero, don't apply fee
+                afterFee = balance;
             }
-        } else afterFee = balance;
+        } else {
+            // No fee applied if fee is zero or no interest earned
+            afterFee = balance;
+        }
 
         // we only transfer amount afterFees and 50% of that remains inaccessible in staking pool
         require(token.balanceOf(address(this)) >= afterFee, 'TokenStaking: insufficient contract balance');
@@ -397,19 +459,27 @@ contract MogaStaking is Ownable, Pausable, ReentrancyGuard, DSMath {
     /**
      * @dev take duration since last update, multiply by account balance and
      * divide by rate multiplied by 1 hour (3600)
-     *
+     * Properly handles discontinued stake offers by using the stored offer properties
      */
     function _rewards(uint256 _stakeId) internal view returns (uint256) {
         // make sure stake is only calculated against committed timestamp
         Stake memory stake = stakes[_stakeId];
+        uint256 stakeOfferId = stakeIdToStakeOffer[_stakeId];
+        
+        // If principle is 0, this stake has been withdrawn or doesn't exist
+        if (stake.principle == 0) {
+            return 0;
+        }
 
         uint256 principle = stake.principle;
-        uint256 duration = stakeOffers[stakeIdToStakeOffer[_stakeId]].lockupDuration;
+        uint256 duration = stakeOffers[stakeOfferId].lockupDuration;
         uint256 stakeEndTime = stake.created + duration;
-        uint256 rewardRate = stakeOffers[stakeIdToStakeOffer[_stakeId]].rate;
+        uint256 rewardRate = stakeOffers[stakeOfferId].rate;
 
+        // Even if the stake offer is discontinued, we honor the agreed rate and duration
         uint256 ray = _yearlyRateToRay(rewardRate);
 
+        // Calculate interest based on current progress through the staking period
         if (stakeEndTime > block.timestamp) {
             return _accrueInterest(principle, ray, block.timestamp - stake.created);
         } else {
@@ -460,12 +530,60 @@ contract MogaStaking is Ownable, Pausable, ReentrancyGuard, DSMath {
         return block.timestamp;
     }
 
+    // Track total flexible rewards to avoid expensive iteration
+    uint256 private totalFlexiblePrincipal;
+    uint256 private reservedFlexibleRewards;
+    
     /**
      * @dev Returns the amount of tokens that can be withdrawn by the owner.
-     * @return the amount of tokens
+     * This function uses tracking variables instead of iteration for better scalability.
+     * @return the amount of tokens safely withdrawable by the owner
      */
     function getWithdrawableAmount() public view returns (uint256) {
-        return token.balanceOf(address(this)) - totalStaked;
+        uint256 contractBalance = token.balanceOf(address(this));
+        
+        // Calculate total committed tokens (principal + accrued interest)
+        // For fixed term stakes, we use totalStaked and totalInterest
+        
+        // For flexible stakes, we use a conservative estimate based on:
+        // 1. Current total flexible principal
+        // 2. Maximum potential growth based on time since last update
+        // 3. Reserved rewards from previous calculations
+        
+        // Calculate maximum potential growth factor since last index update
+        uint256 maxGrowthFactor = 0;
+        if (block.timestamp > lastIndexUpdateTimestamp && flexibleRewardRate > 0) {
+            uint256 timeDelta = block.timestamp - lastIndexUpdateTimestamp;
+            // Calculate maximum growth using current rate
+            uint256 currentIndex = rmul(rewardIndex, rpow(flexibleRewardRate, timeDelta));
+            maxGrowthFactor = rdiv(currentIndex, rewardIndex);
+        } else {
+            // No growth if no time has passed or rate is 0
+            maxGrowthFactor = wadToRay(1 ether); // RAY value for 1.0
+        }
+        
+        // Calculate conservative estimate of flexible rewards
+        // This overestimates rewards to ensure safety
+        uint256 totalFlexibleRewards = 0;
+        if (totalFlexiblePrincipal > 0) {
+            // Estimate maximum potential rewards by applying growth factor to all principal
+            uint256 maxPotentialValue = rmul(totalFlexiblePrincipal, maxGrowthFactor);
+            totalFlexibleRewards = maxPotentialValue > totalFlexiblePrincipal 
+                ? (maxPotentialValue - totalFlexiblePrincipal) + reservedFlexibleRewards 
+                : reservedFlexibleRewards;
+        } else {
+            totalFlexibleRewards = reservedFlexibleRewards;
+        }
+        
+        // Calculate total committed tokens
+        uint256 totalCommitted = totalStaked + totalInterest + totalFlexibleRewards;
+        
+        // Return withdrawable amount, ensuring it doesn't go negative
+        if (contractBalance > totalCommitted) {
+            return contractBalance - totalCommitted;
+        } else {
+            return 0;
+        }
     }
 
     // flexible staking logic with time-weighted accumulator system
@@ -511,16 +629,23 @@ contract MogaStaking is Ownable, Pausable, ReentrancyGuard, DSMath {
         // Transfer tokens from user
         token.safeTransferFrom(msg.sender, address(this), _amount);
 
-        // Update user's balance
-        flexibleBalanceOf[msg.sender] += _amount;
+        // Update user's balance with overflow check
+        uint256 newUserBalance = flexibleBalanceOf[msg.sender] + _amount;
+        require(newUserBalance >= flexibleBalanceOf[msg.sender], "TokenStaking: user balance overflow");
+        flexibleBalanceOf[msg.sender] = newUserBalance;
 
         // If this is user's first stake, set their index snapshot
         if (userRewardIndex[msg.sender] == 0) {
             userRewardIndex[msg.sender] = rewardIndex;
         }
 
-        // Update total staked amount
-        totalStaked += _amount;
+        // Update total staked amount with overflow check
+        uint256 newTotalStaked = totalStaked + _amount;
+        require(newTotalStaked >= totalStaked, "TokenStaking: totalStaked overflow");
+        totalStaked = newTotalStaked;
+        
+        // Update flexible principal tracking
+        totalFlexiblePrincipal += _amount;
 
         emit DepositFlexible(msg.sender, _amount);
     }
@@ -561,17 +686,25 @@ contract MogaStaking is Ownable, Pausable, ReentrancyGuard, DSMath {
             uint256 afterFee;
 
             // Apply fee if applicable
-            if (flexibleFee > 0) {
+            if (flexibleFee > 0 && unclaimedRewards > 0) {
                 uint256 feeAmount = (unclaimedRewards * flexibleFee) / 100;
-                uint256 burnAmount = feeAmount / 2;
+                
+                // Only apply fee if the amount is significant
+                if (feeAmount > 0) {
+                    uint256 burnAmount = feeAmount / 2;
 
-                // Burn half the fee
-                if (burnAmount > 0) {
-                    token.burn(burnAmount);
+                    // Burn half the fee
+                    if (burnAmount > 0) {
+                        token.burn(burnAmount);
+                    }
+
+                    afterFee = unclaimedRewards - feeAmount;
+                } else {
+                    // If fee amount rounds to zero, don't apply fee
+                    afterFee = unclaimedRewards;
                 }
-
-                afterFee = unclaimedRewards - feeAmount;
             } else {
+                // No fee applied if fee is zero or no rewards earned
                 afterFee = unclaimedRewards;
             }
 
@@ -583,6 +716,16 @@ contract MogaStaking is Ownable, Pausable, ReentrancyGuard, DSMath {
 
             // Update total staked amount
             totalStaked += afterFee;
+            
+            // Update flexible principal tracking
+            totalFlexiblePrincipal += afterFee;
+            
+            // Since we're converting rewards to principal, we can reduce the reserved rewards
+            if (afterFee <= reservedFlexibleRewards) {
+                reservedFlexibleRewards -= afterFee;
+            } else {
+                reservedFlexibleRewards = 0;
+            }
 
             emit CompoundFlexible(_beneficiary, afterFee);
         }
@@ -606,15 +749,23 @@ contract MogaStaking is Ownable, Pausable, ReentrancyGuard, DSMath {
         // Apply fee to rewards if applicable
         if (unclaimedRewards > 0 && flexibleFee > 0) {
             uint256 feeAmount = (unclaimedRewards * flexibleFee) / 100;
-            uint256 burnAmount = feeAmount / 2;
+            
+            // Only apply fee if the amount is significant
+            if (feeAmount > 0) {
+                uint256 burnAmount = feeAmount / 2;
 
-            // Burn half the fee
-            if (burnAmount > 0) {
-                token.burn(burnAmount);
+                // Burn half the fee
+                if (burnAmount > 0) {
+                    token.burn(burnAmount);
+                }
+
+                afterFee = unclaimedRewards - feeAmount;
+            } else {
+                // If fee amount rounds to zero, don't apply fee
+                afterFee = unclaimedRewards;
             }
-
-            afterFee = unclaimedRewards - feeAmount;
         } else {
+            // No fee applied if fee is zero or no rewards earned
             afterFee = unclaimedRewards;
         }
 
@@ -647,6 +798,15 @@ contract MogaStaking is Ownable, Pausable, ReentrancyGuard, DSMath {
 
         // Update total staked amount
         totalStaked -= principal;
+        
+        // Update flexible principal tracking
+        totalFlexiblePrincipal -= principal;
+        
+        // Add any unclaimed rewards to the reserved amount
+        // This ensures rewards are still accounted for even after users withdraw
+        if (afterFee > 0) {
+            reservedFlexibleRewards += afterFee;
+        }
 
         // Check contract balance before transfer
         require(token.balanceOf(address(this)) >= totalAmount, 'TokenStaking: insufficient contract balance');

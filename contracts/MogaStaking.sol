@@ -10,9 +10,10 @@ import '@openzeppelin/contracts/utils/Pausable.sol';
 import '@openzeppelin/contracts/utils/ReentrancyGuard.sol';
 import '@openzeppelin/contracts/access/Ownable.sol';
 
+import './IMogaStaking.sol';
 import '../lib/DSMath.sol';
 
-contract MogaStaking is Ownable, Pausable, ReentrancyGuard, DSMath {
+contract MogaStaking is Ownable, Pausable, ReentrancyGuard, DSMath, IMogaStaking {
     using SafeERC20 for ERC20Burnable;
 
     ERC20Burnable token;
@@ -238,12 +239,12 @@ contract MogaStaking is Ownable, Pausable, ReentrancyGuard, DSMath {
         return add(wadToRay(1 ether), rdiv(wadToRay(_rateWad), weiToRay(365 * 86400)));
     }
 
-    function getStakeDetails(uint256 _stakeId) external view returns (Stake memory) {
+    function getStakeDetails(uint256 _stakeId) external view returns (uint256 offerId, uint256 principle, uint256 created, address owner_) {
         Stake memory stake = stakes[_stakeId];
         if (stake.owner != msg.sender && msg.sender != owner()) {
             revert InvalidOwner(_stakeId, msg.sender);
         }
-        return stake;
+        return (stake.offerId, stake.principle, stake.created, stake.owner);
     }
 
     function stakeFixedTerm(uint256 _stakeOfferId, uint256 _amount) external whenNotPaused nonReentrant {

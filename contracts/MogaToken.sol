@@ -1,27 +1,19 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.20;
 
-import "@openzeppelin/contracts/token/ERC20/ERC20.sol";
-import "@openzeppelin/contracts/token/ERC20/extensions/ERC20Capped.sol";
-import "@openzeppelin/contracts/token/ERC20/extensions/ERC20Burnable.sol";
-import "@openzeppelin/contracts/access/Ownable.sol";
+// cSpell:ignore moga
 
-contract MogaToken is ERC20Capped, ERC20Burnable, Ownable {
-    constructor(
-        address initialOwner,
-        uint256 cap
-    )
-        ERC20("MogaToken", "Moga")
-        ERC20Capped(cap * (10 ** decimals()))
-        Ownable(initialOwner)
-    {}
+import '@openzeppelin/contracts/token/ERC20/ERC20.sol';
+import '@openzeppelin/contracts/token/ERC20/extensions/ERC20Capped.sol';
+import '@openzeppelin/contracts/token/ERC20/extensions/ERC20Burnable.sol';
+import '@openzeppelin/contracts/access/Ownable.sol';
+import './IMogaToken.sol';
 
-    // overriding internal function to enforce implementation from ERC20Capped
-    function _update(
-        address from,
-        address to,
-        uint256 value
-    ) internal virtual override(ERC20Capped, ERC20) {
+contract MogaToken is ERC20Capped, ERC20Burnable, Ownable, IMogaToken {
+    constructor(address initialOwner, uint256 cap) ERC20('MogaToken', 'Moga') ERC20Capped(cap * (10 ** decimals())) Ownable(initialOwner) {}
+
+    // Overriding internal function to enforce implementation from ERC20Capped
+    function _update(address from, address to, uint256 value) internal virtual override(ERC20Capped, ERC20) {
         super._update(from, to, value);
 
         if (from == address(0)) {

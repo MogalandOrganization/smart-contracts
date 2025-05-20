@@ -62,8 +62,8 @@ describe('MogaStaking Edge Cases', function () {
         await mogaToken.connect(mogaAdmin).transfer(mogaStakingAddress, hre.ethers.parseEther(initialStakingAmount));
 
         // Setup flexible staking rate and fee
-        await mogaStaking.connect(mogaAdmin).setNewFlexibleRewardRate(hre.ethers.parseEther(rate.toString()));
-        await mogaStaking.connect(mogaAdmin).setNewFlexibleRewardFee(10);
+        await mogaStaking.connect(mogaAdmin).setFlexibleTermRate(hre.ethers.parseEther(rate.toString()));
+        await mogaStaking.connect(mogaAdmin).setFlexibleTermFee(10);
 
         // Transfer tokens to test addresses
         await mogaToken.connect(mogaAdmin).transfer(addr1.address, hre.ethers.parseEther('10000'));
@@ -77,7 +77,7 @@ describe('MogaStaking Edge Cases', function () {
         await mogaToken.connect(addr3).approve(mogaStakingAddress, hre.ethers.parseEther('10000'));
 
         // Create a stake offer with normal parameters as a baseline
-        await mogaStaking.connect(mogaAdmin).createStakeOffer(
+        await mogaStaking.connect(mogaAdmin).createFixedTermOffer(
             hre.ethers.parseEther(rate.toString()),
             10, // 10% fee
             longPeriod.toString(),
@@ -88,7 +88,7 @@ describe('MogaStaking Edge Cases', function () {
     describe('Zero Interest Scenarios', function () {
         it('should handle unstaking after extremely short periods with no meaningful interest', async function () {
             // Create stake offer with very short duration
-            await mogaStaking.connect(mogaAdmin).createStakeOffer(
+            await mogaStaking.connect(mogaAdmin).createFixedTermOffer(
                 hre.ethers.parseEther(tinyRate.toString()), // Very low rate
                 10, // 10% fee
                 veryShortPeriod.toString(), // 1 second duration
@@ -96,7 +96,7 @@ describe('MogaStaking Edge Cases', function () {
             );
 
             // Make sure we're using the correct stake offer ID
-            const lastStakeOfferId = await mogaStaking.lastStakeOfferId();
+            const lastStakeOfferId = await mogaStaking.lastFixedTermOfferId();
             const newStakeOfferId = Number(lastStakeOfferId);
 
             // Stake tokens
@@ -111,7 +111,7 @@ describe('MogaStaking Edge Cases', function () {
             await helpers.time.increase(veryShortPeriod + 1);
 
             // Get rewards amount - expected to be very close to principal
-            const rewards = await mogaStaking.rewards(stakeId);
+            const rewards = await mogaStaking.getFixedTermRewards(stakeId);
             console.log(`Rewards after ${veryShortPeriod} second(s): ${hre.ethers.formatEther(rewards)}`);
             expect(rewards).to.be.closeTo(hre.ethers.parseEther(normalStakeAmount), hre.ethers.parseEther('0.001'));
 
@@ -132,7 +132,7 @@ describe('MogaStaking Edge Cases', function () {
     describe('Rounding Errors', function () {
         it('should handle rounding errors in calculations with small amounts', async function () {
             // Create stake offer with medium duration
-            await mogaStaking.connect(mogaAdmin).createStakeOffer(
+            await mogaStaking.connect(mogaAdmin).createFixedTermOffer(
                 hre.ethers.parseEther(smallRate.toString()), // 0.1% rate
                 10, // 10% fee
                 mediumPeriod.toString(), // 1 hour duration
@@ -140,7 +140,7 @@ describe('MogaStaking Edge Cases', function () {
             );
 
             // Make sure we're using the correct stake offer ID
-            const lastStakeOfferId = await mogaStaking.lastStakeOfferId();
+            const lastStakeOfferId = await mogaStaking.lastFixedTermOfferId();
             const newStakeOfferId = Number(lastStakeOfferId);
 
             // Stake a very small amount
@@ -156,7 +156,7 @@ describe('MogaStaking Edge Cases', function () {
             // Calculate expected interest (will be tiny)
             const stakeDetails = await mogaStaking.connect(mogaAdmin).getStakeDetails(stakeId);
             const stakePrincipal = stakeDetails[1];
-            const rewardsAmount = await mogaStaking.rewards(stakeId);
+            const rewardsAmount = await mogaStaking.getFixedTermRewards(stakeId);
             const interest = rewardsAmount - stakePrincipal;
 
             console.log(`Stake principal: ${hre.ethers.formatEther(stakePrincipal)}`);
@@ -175,7 +175,7 @@ describe('MogaStaking Edge Cases', function () {
     describe('Token Burn Threshold', function () {
         it('should handle tiny burn amounts correctly', async function () {
             // Create stake offer
-            await mogaStaking.connect(mogaAdmin).createStakeOffer(
+            await mogaStaking.connect(mogaAdmin).createFixedTermOffer(
                 hre.ethers.parseEther(smallRate.toString()), // Small rate
                 10, // 10% fee
                 shortPeriod.toString(), // Short duration
@@ -183,7 +183,7 @@ describe('MogaStaking Edge Cases', function () {
             );
 
             // Make sure we're using the correct stake offer ID
-            const lastStakeOfferId = await mogaStaking.lastStakeOfferId();
+            const lastStakeOfferId = await mogaStaking.lastFixedTermOfferId();
             const newStakeOfferId = Number(lastStakeOfferId);
 
             // Record initial token supply
@@ -200,7 +200,7 @@ describe('MogaStaking Edge Cases', function () {
             await helpers.time.increase(shortPeriod + 1);
 
             // Calculate rewards and potential burn amounts
-            const rewards = await mogaStaking.rewards(stakeId);
+            const rewards = await mogaStaking.getFixedTermRewards(stakeId);
             const principal = hre.ethers.parseEther(verySmallStakeAmount);
             const interest = rewards - principal;
             const expectedFee = (interest * 10n) / 100n;
@@ -233,7 +233,7 @@ describe('MogaStaking Edge Cases', function () {
     describe('Maximum Values', function () {
         it('should handle large token amounts without overflow', async function () {
             // Create stake offer
-            await mogaStaking.connect(mogaAdmin).createStakeOffer(
+            await mogaStaking.connect(mogaAdmin).createFixedTermOffer(
                 hre.ethers.parseEther(rate.toString()), // Normal rate
                 10, // 10% fee
                 mediumPeriod.toString(), // 1 hour duration
@@ -241,7 +241,7 @@ describe('MogaStaking Edge Cases', function () {
             );
 
             // Make sure we're using the correct stake offer ID
-            const lastStakeOfferId = await mogaStaking.lastStakeOfferId();
+            const lastStakeOfferId = await mogaStaking.lastFixedTermOfferId();
             const newStakeOfferId = Number(lastStakeOfferId);
 
             // Stake a large amount
@@ -255,7 +255,7 @@ describe('MogaStaking Edge Cases', function () {
             await helpers.time.increase(mediumPeriod + 1);
 
             // Get reward amount
-            const rewards = await mogaStaking.rewards(stakeId);
+            const rewards = await mogaStaking.getFixedTermRewards(stakeId);
             console.log(`Rewards for large stake: ${hre.ethers.formatEther(rewards)}`);
 
             // Record balance before unstaking
@@ -284,28 +284,28 @@ describe('MogaStaking Edge Cases', function () {
             await mogaStaking.connect(addr1).stakeFixedTerm(1, hre.ethers.parseEther(normalStakeAmount));
 
             // Create a flexible stake
-            await mogaStaking.connect(addr1).stakeFlexible(hre.ethers.parseEther(normalStakeAmount));
+            await mogaStaking.connect(addr1).stakeFlexibleTerm(hre.ethers.parseEther(normalStakeAmount));
 
             // Verify both stakes exist
             const stakeIds = await mogaStaking.connect(mogaAdmin).getAllStakeIdsOfAddress(addr1.address, 0, 100);
             expect(stakeIds.length).to.equal(1); // Fixed-term stake
 
-            const flexibleBalance = await mogaStaking.flexibleBalanceOf(addr1.address);
+            const flexibleBalance = await mogaStaking.flexibleTermBalances(addr1.address);
             expect(flexibleBalance).to.equal(hre.ethers.parseEther(normalStakeAmount)); // Flexible stake
 
             // Advance time
             await helpers.time.increase(longPeriod + 1);
 
             // Check rewards for both stake types
-            const fixedRewards = await mogaStaking.rewards(1);
-            const flexibleRewards = await mogaStaking.rewardsFlexible(addr1.address);
+            const fixedRewards = await mogaStaking.getFixedTermRewards(1);
+            const flexibleRewards = await mogaStaking.getFlexibleTermRewards(addr1.address);
 
             console.log(`Fixed-term rewards: ${hre.ethers.formatEther(fixedRewards)}`);
             console.log(`Flexible rewards: ${hre.ethers.formatEther(flexibleRewards)}`);
 
             // Unstake both
             await mogaStaking.connect(addr1).unStakeFixedTerm(1);
-            await mogaStaking.connect(addr1).withdrawFlexible();
+            await mogaStaking.connect(addr1).unStakeFlexibleTerm();
 
             // Verify final balance reflects both unstaked amounts plus interest
             const finalBalance = await mogaToken.balanceOf(addr1.address);
@@ -324,7 +324,7 @@ describe('MogaStaking Edge Cases', function () {
     describe('Rate Change Scenarios', function () {
         it('should calculate rewards correctly across multiple rate changes', async function () {
             // Stake a significant amount
-            await mogaStaking.connect(addr1).stakeFlexible(hre.ethers.parseEther('1000'));
+            await mogaStaking.connect(addr1).stakeFlexibleTerm(hre.ethers.parseEther('1000'));
 
             // Initial rate is already set to 5%
             console.log('Starting with 5% rate');
@@ -333,9 +333,9 @@ describe('MogaStaking Edge Cases', function () {
             await helpers.time.increase(86400 * 90); // 90 days
 
             // Check rewards after first period
-            let rewards1 = await mogaStaking.rewardsFlexible(addr1.address);
+            let rewards1 = await mogaStaking.getFlexibleTermRewards(addr1.address);
             const initialStake = hre.ethers.parseEther('1000');
-            const stake1 = await mogaStaking.flexibleBalanceOf(addr1.address);
+            const stake1 = await mogaStaking.flexibleTermBalances(addr1.address);
 
             console.log(`After 90 days at 5%:`);
             console.log(`- User stake balance: ${hre.ethers.formatEther(stake1)}`);
@@ -358,14 +358,14 @@ describe('MogaStaking Edge Cases', function () {
             }
 
             // Change rate to 3%
-            await mogaStaking.connect(mogaAdmin).setNewFlexibleRewardRate(hre.ethers.parseEther('0.03'));
+            await mogaStaking.connect(mogaAdmin).setFlexibleTermRate(hre.ethers.parseEther('0.03'));
             console.log('Rate changed to 3%');
 
             // Second period - 6 months at 3%
             await helpers.time.increase(86400 * 180); // 180 days
 
             // Check rewards after second period
-            let rewards2 = await mogaStaking.rewardsFlexible(addr1.address);
+            let rewards2 = await mogaStaking.getFlexibleTermRewards(addr1.address);
             console.log(`After additional 180 days at 3%:`);
             console.log(`- User stake balance: ${hre.ethers.formatEther(stake1)}`);
             console.log(`- Interest earned: ${hre.ethers.formatEther(rewards2)}`);
@@ -387,14 +387,14 @@ describe('MogaStaking Edge Cases', function () {
             }
 
             // Change rate to 7%
-            await mogaStaking.connect(mogaAdmin).setNewFlexibleRewardRate(hre.ethers.parseEther('0.07'));
+            await mogaStaking.connect(mogaAdmin).setFlexibleTermRate(hre.ethers.parseEther('0.07'));
             console.log('Rate changed to 7%');
 
             // Third period - 3 months at 7%
             await helpers.time.increase(86400 * 90); // 90 days
 
             // Check final rewards
-            let rewards3 = await mogaStaking.rewardsFlexible(addr1.address);
+            let rewards3 = await mogaStaking.getFlexibleTermRewards(addr1.address);
             console.log(`After additional 90 days at 7%:`);
             console.log(`- User stake balance: ${hre.ethers.formatEther(stake1)}`);
             console.log(`- Interest earned: ${hre.ethers.formatEther(rewards3)}`);
@@ -424,7 +424,7 @@ describe('MogaStaking Edge Cases', function () {
             expect(rewards3).to.be.gt(rewards2);
 
             // Withdraw to confirm system works end-to-end
-            await mogaStaking.connect(addr1).withdrawFlexible();
+            await mogaStaking.connect(addr1).unStakeFlexibleTerm();
 
             const finalUserBalance = await mogaToken.balanceOf(addr1.address);
             console.log(`Final user balance after withdrawal: ${hre.ethers.formatEther(finalUserBalance)}`);
@@ -435,30 +435,30 @@ describe('MogaStaking Edge Cases', function () {
 
         it('should handle concurrent users with different start times correctly', async function () {
             // First user starts staking
-            await mogaStaking.connect(addr1).stakeFlexible(hre.ethers.parseEther('1000'));
+            await mogaStaking.connect(addr1).stakeFlexibleTerm(hre.ethers.parseEther('1000'));
 
             // Advance 30 days
             await helpers.time.increase(86400 * 30);
 
             // Second user starts staking
-            await mogaStaking.connect(addr2).stakeFlexible(hre.ethers.parseEther('1000'));
+            await mogaStaking.connect(addr2).stakeFlexibleTerm(hre.ethers.parseEther('1000'));
 
             // Advance 30 more days
             await helpers.time.increase(86400 * 30);
 
             // Third user starts staking
-            await mogaStaking.connect(addr3).stakeFlexible(hre.ethers.parseEther('1000'));
+            await mogaStaking.connect(addr3).stakeFlexibleTerm(hre.ethers.parseEther('1000'));
 
             // Change rate
-            await mogaStaking.connect(mogaAdmin).setNewFlexibleRewardRate(hre.ethers.parseEther('0.08'));
+            await mogaStaking.connect(mogaAdmin).setFlexibleTermRate(hre.ethers.parseEther('0.08'));
 
             // Advance 60 more days
             await helpers.time.increase(86400 * 60);
 
             // Get rewards for all users
-            const rewards1 = await mogaStaking.rewardsFlexible(addr1.address);
-            const rewards2 = await mogaStaking.rewardsFlexible(addr2.address);
-            const rewards3 = await mogaStaking.rewardsFlexible(addr3.address);
+            const rewards1 = await mogaStaking.getFlexibleTermRewards(addr1.address);
+            const rewards2 = await mogaStaking.getFlexibleTermRewards(addr2.address);
+            const rewards3 = await mogaStaking.getFlexibleTermRewards(addr3.address);
 
             console.log(`User 1 (120 days total): ${hre.ethers.formatEther(rewards1)}`);
             console.log(`User 2 (90 days total): ${hre.ethers.formatEther(rewards2)}`);

@@ -14,8 +14,7 @@ using SafeERC20 for IERC20;
 
 /**
  * @title TokenMigration
- * @dev This contract allows users to migrate their old MOGA tokens to new MOGA tokens.
- * It uses the SafeERC20 library to handle token transfers safely.
+ * @dev This contract allows users to migrate their old MOGA tokens to new MOGA tokens before a specified deadline.
  * The contract owner can withdraw any remaining tokens in case of an emergency.
  * @notice This contract is designed for the migration of MOGA tokens from an old contract to a new one.
  * Users must approve the contract to spend their old tokens before calling the migrate function.
@@ -25,22 +24,30 @@ using SafeERC20 for IERC20;
  * and 0.5e18 means 0.5 new per 1 old. The contract owner can update the migration ratio and withdraw
  * any remaining tokens in case of an emergency.
  * It will be up to the owner to burn the old tokens.
+ * Consider a grace period or allow manual swaps after the deadline in special cases (optional support channel).
  */
 contract TokenMigration is Ownable, ReentrancyGuard, DSMath, ITokenMigration {
     IERC20 public oldToken;
     IERC20 public newToken;
     uint256 public ratio; // e.g., 1e18 means 1:1, 2e18 means 2 new per 1 old, 0.5e18 means 0.5 new per 1 old
+    uint256 public migrationDeadline; // Between 30 days for small communities and 90 days for big ones // Date in seconds
 
     event Migrated(address indexed user, uint256 oldAmount, uint256 newAmount);
     event RatioUpdated(uint256 newRatio);
 
-    constructor(address initialOwner, address from, address to, uint256 _ratio) Ownable(initialOwner) {
+    constructor(address initialOwner, address from, address to, uint256 _ratio, uint256 deadlineTimestamp) Ownable(initialOwner) {
         require(Ownable(from).owner() == initialOwner, 'Not owner of old token');
         require(Ownable(to).owner() == initialOwner, 'Not owner of new token');
         require(_ratio > 0, 'Ratio must be positive');
         oldToken = IERC20(from);
         newToken = IERC20(to);
         ratio = _ratio;
+        migrationDeadline = deadlineTimestamp;
+    }
+
+    modifier beforeDeadline() {
+        require(block.timestamp <= migrationDeadline, 'Migration has ended');
+        _;
     }
 
     function setRatio(uint256 _ratio) external onlyOwner {
@@ -50,7 +57,7 @@ contract TokenMigration is Ownable, ReentrancyGuard, DSMath, ITokenMigration {
     }
 
     // Users call this to migrate their old tokens
-    function migrate(uint256 oldAmount) external nonReentrant {
+    function migrate(uint256 oldAmount) external nonReentrant beforeDeadline {
         require(oldAmount > 0, 'Amount must be greater than 0');
 
         // Transfer old MOGA from user to this contract

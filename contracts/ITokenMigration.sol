@@ -13,6 +13,8 @@ interface ITokenMigration {
 
     function newToken() external view returns (IERC20);
 
+    function migrationDeadline() external view returns (uint256);
+
     function migrate(uint256 oldAmount) external;
 
     // -------------

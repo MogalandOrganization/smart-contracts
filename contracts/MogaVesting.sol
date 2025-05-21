@@ -9,6 +9,18 @@ import '@openzeppelin/contracts/utils/ReentrancyGuard.sol';
 import '@openzeppelin/contracts/access/Ownable.sol';
 import './IMogaVesting.sol';
 
+/**
+ * @title MogaVesting
+ * @dev This contract implements a vesting schedule for ERC20 tokens.
+ * It allows the owner to create vesting schedules for beneficiaries, release vested tokens,
+ * and revoke vesting schedules if they are revocable.
+ * @author
+ * @notice This contract is designed to be used with ERC20 tokens and should be deployed on EVM-compatible blockchains.
+ * The contract uses OpenZeppelin's SafeERC20 library for safe token transfers and Ownable for access control.
+ * The contract is designed to be used in a vesting scenario where the owner can create vesting schedules for beneficiaries,
+ * and beneficiaries can release their vested tokens after the cliff period.
+ * The vesting schedules are identified by a unique identifier, which is computed based on the beneficiary address and an index.
+ */
 contract MogaVesting is Ownable, ReentrancyGuard, IMogaVesting {
     using SafeERC20 for IERC20;
 

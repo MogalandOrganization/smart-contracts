@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.20;
 
-// cSpell:ignore moga
+// cSpell:ignore moga, mogaland
 
 import '@openzeppelin/contracts/token/ERC20/ERC20.sol';
 import '@openzeppelin/contracts/token/ERC20/extensions/ERC20Capped.sol';
@@ -9,6 +9,13 @@ import '@openzeppelin/contracts/token/ERC20/extensions/ERC20Burnable.sol';
 import '@openzeppelin/contracts/access/Ownable.sol';
 import './IMogaToken.sol';
 
+/**
+ * @title MogaToken
+ * @dev This contract implements a capped ERC20 token with burnable functionality.
+ * It allows the owner to mint tokens up to a specified cap.
+ * The token is named "MogaToken" with the symbol "Moga", and is a utility token within the Mogaland ecosystem.
+ * The contract is designed to be deployed on EVM-compatible blockchains.
+ */
 contract MogaToken is ERC20Capped, ERC20Burnable, Ownable, IMogaToken {
     constructor(address initialOwner, uint256 cap) ERC20('MogaToken', 'Moga') ERC20Capped(cap * (10 ** decimals())) Ownable(initialOwner) {}
 

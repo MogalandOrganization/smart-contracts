@@ -9,10 +9,21 @@ import '@openzeppelin/contracts/token/ERC20/extensions/ERC20Burnable.sol';
 import '@openzeppelin/contracts/utils/Pausable.sol';
 import '@openzeppelin/contracts/utils/ReentrancyGuard.sol';
 import '@openzeppelin/contracts/access/Ownable.sol';
-
 import './IMogaStaking.sol';
 import '../lib/DSMath.sol';
 
+/**
+ * @title MogaStaking
+ * @dev This contract implements a staking mechanism for the Moga token.
+ * It allows users to stake their tokens for fixed and flexible terms,
+ * with interest rates and fees defined by the contract owner.
+ * The contract is designed to be deployed on EVM-compatible blockchains.
+ * @notice This contract is part of the Moga ecosystem and is intended for use with the Moga token.
+ * It is designed to be secure, efficient, and user-friendly.
+ * The contract owner has the ability to pause and unpause the contract, as well as create and manage staking offers.
+ * The contract also implements a reward index system (see README.md) for flexible staking,
+ * which allows users to earn rewards based on the amount of time their tokens are staked.
+ */
 contract MogaStaking is Ownable, Pausable, ReentrancyGuard, DSMath, IMogaStaking {
     using SafeERC20 for ERC20Burnable;
 

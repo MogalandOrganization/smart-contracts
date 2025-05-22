@@ -405,6 +405,11 @@ contract MogaStaking is Ownable, Pausable, ReentrancyGuard, DSMath, IMogaStaking
         uint256[] memory stakeIds = holderToStakeIds[_address];
         uint256 length = stakeIds.length;
 
+        // Handle empty array case
+        if (length == 0) {
+            return new uint256[](0);
+        }
+
         require(_start < length, 'Start index out of bounds');
 
         if (_start == 0 && length < _count) {

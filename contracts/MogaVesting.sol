@@ -165,7 +165,8 @@ contract MogaVesting is Ownable, ReentrancyGuard, IMogaVesting {
      */
     function getVestingSchedulesCountByBeneficiary(address _beneficiary) external view returns (uint256) {
         if (_beneficiary != msg.sender && msg.sender != owner()) {
-            revert InvalidOwner(_beneficiary, msg.sender);
+            // revert InvalidOwner(_beneficiary, msg.sender);
+            return 0;
         }
         return holdersVestingCount[_beneficiary];
     }
@@ -212,7 +213,8 @@ contract MogaVesting is Ownable, ReentrancyGuard, IMogaVesting {
         )
     {
         if (holder != msg.sender && msg.sender != owner()) {
-            revert InvalidOwner(holder, msg.sender);
+            // revert InvalidOwner(holder, msg.sender);
+            return (address(0), 0, 0, 0, 0, false, 0, 0, false);
         }
         return getVestingSchedule(computeVestingScheduleIdForBeneficiaryAndIndex(holder, index));
     }
@@ -249,7 +251,8 @@ contract MogaVesting is Ownable, ReentrancyGuard, IMogaVesting {
         )
     {
         if (holder != msg.sender && msg.sender != owner()) {
-            revert InvalidOwner(holder, msg.sender);
+            // revert InvalidOwner(holder, msg.sender);
+            return (address(0), 0, 0, 0, 0, false, 0, 0, false);
         }
         return getVestingSchedule(computeVestingScheduleIdForBeneficiaryAndIndex(holder, holdersVestingCount[holder] - 1));
     }
@@ -346,7 +349,8 @@ contract MogaVesting is Ownable, ReentrancyGuard, IMogaVesting {
      */
     function computeNextVestingScheduleIdForBeneficiary(address holder) public view returns (bytes32) {
         if (holder != msg.sender && msg.sender != owner()) {
-            revert InvalidOwner(holder, msg.sender);
+            // revert InvalidOwner(holder, msg.sender);
+            return bytes32(0);
         }
         return computeVestingScheduleIdForBeneficiaryAndIndex(holder, holdersVestingCount[holder]);
     }
@@ -356,7 +360,8 @@ contract MogaVesting is Ownable, ReentrancyGuard, IMogaVesting {
      */
     function computeVestingScheduleIdForBeneficiaryAndIndex(address holder, uint256 index) public view returns (bytes32) {
         if (holder != msg.sender && msg.sender != owner()) {
-            revert InvalidOwner(holder, msg.sender);
+            // revert InvalidOwner(holder, msg.sender);
+            return bytes32(0);
         }
         return keccak256(abi.encodePacked(holder, index));
     }

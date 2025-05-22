@@ -17,6 +17,10 @@ interface IMogaToken is IERC20 {
     // function owner() external view returns (address);
     // function transferOwnership(address newOwner) external;
 
+    // -------------
+    // --- Admin ---
+    // -------------
+
     // Custom method to be called at TGE
     function mintTokens() external;
 }

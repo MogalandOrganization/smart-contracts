@@ -23,7 +23,7 @@ npx hardhat node
 npx solc --include-path node_modules/ --base-path . contracts/MogaToken.sol --abi --verbose --output-dir abi/
 npx solc --include-path node_modules/ --base-path . contracts/MogaVesting.sol --abi --verbose --output-dir abi/
 npx solc --include-path node_modules/ --base-path . contracts/MogaStaking.sol --abi --verbose --output-dir abi/
-npx hardhat run --network opencampus scripts/deploy.js
+npx hardhat run --network opencampus scripts/1-deploy.js
 npx hardhat verify --network opencampus _deployedTokenAddress_ _mogaAdminAddress_ 1000000000
 npx hardhat verify --network opencampus _deployedStakingAddress_ _mogaAdminAddress_ _deployedTokenAddress_
 npx hardhat verify --network opencampus _deployedVestingAddress_ _mogaAdminAddress_ _deployedTokenAddress_
@@ -44,7 +44,7 @@ HARDHAT_NETWORK=opencampus node scripts/8-discontinue-staking-offer.js [offer-id
 ```
 
 ```shell
-npx hardhat run --network edu-chain scripts/deploy.js
+npx hardhat run --network edu-chain scripts/1-deploy.js
 ```
 
 ### Special EDUchain/OPENCAMPUS consideration

@@ -81,6 +81,7 @@ contract MogaStaking is Ownable, Pausable, ReentrancyGuard, DSMath, IMogaStaking
      * @dev
      * variables related to the flexible staking mechanism
      * Using time-weighted accumulators for efficient reward tracking
+     * See README.md for details
      */
     uint256 public flexibleTermRate = 0; // Current rate as RAY value
     uint256 public flexibleTermFee = 0; // Current fee percentage
@@ -253,7 +254,8 @@ contract MogaStaking is Ownable, Pausable, ReentrancyGuard, DSMath, IMogaStaking
     function getStakeDetails(uint256 _stakeId) external view returns (uint256 offerId, uint256 principle, uint256 created, address owner_) {
         Stake memory stake = stakes[_stakeId];
         if (stake.owner != msg.sender && msg.sender != owner()) {
-            revert InvalidOwner(_stakeId, msg.sender);
+            // revert InvalidOwner(_stakeId, msg.sender);
+            return (0, 0, 0, address(0));
         }
         return (stake.offerId, stake.principle, stake.created, stake.owner);
     }
@@ -396,7 +398,8 @@ contract MogaStaking is Ownable, Pausable, ReentrancyGuard, DSMath, IMogaStaking
 
     function getAllStakeIdsOfAddress(address _address, uint256 _start, uint256 _count) external view returns (uint256[] memory) {
         if (_address != msg.sender && msg.sender != owner()) {
-            revert InvalidOwner(0, _address);
+            // revert InvalidOwner(0, _address);
+            return new uint256[](0);
         }
 
         uint256[] memory stakeIds = holderToStakeIds[_address];
@@ -531,7 +534,6 @@ contract MogaStaking is Ownable, Pausable, ReentrancyGuard, DSMath, IMogaStaking
         emit FlexibleTermDeposit(msg.sender, _amount);
     }
 
-    // flexible staking logic with time-weighted accumulator system
     /**
      * @dev Get current rewards for a user without modifying state
      * Calculates using the current rewardIndex and the user's snapshot

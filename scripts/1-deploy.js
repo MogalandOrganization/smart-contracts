@@ -15,6 +15,7 @@ async function main(argv) {
     await mogaToken.waitForDeployment();
     const mogaTokenAddress = await mogaToken.getAddress();
     console.log('MOGA token deployed: ', mogaTokenAddress);
+    // const mogaTokenAddress = process.env.MOGA_CONTRACT;
 
     // Publish the MOGA staking contract
     const mogaStaking = await Staking.deploy(process.env.PUBLIC_KEY, mogaTokenAddress);

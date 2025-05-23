@@ -30,10 +30,10 @@ async function main(argv) {
     const staking = await Staking.attach(stakingAddress).connect(signer);
 
     // Get the list of staking offer ids
-    const stakingOfferIds = await staking.getAllStakeOfferIds();
-    console.log('List of staking offers: [', stakingOfferIds.join(', '), ']');
-    for (const offerId of stakingOfferIds) {
-        const offer = await staking.stakeOffers(offerId);
+    let lastOfferId = await staking.lastFixedTermOfferId();
+    console.log('Last offer id:', lastOfferId.toString());
+    for (let i = 1; i <= lastOfferId; i++) {
+        const offer = await staking.fixedTermOffers(i);
         if (offer[3] === false || offer[4] === true) {
             continue;
         }
@@ -56,7 +56,7 @@ async function main(argv) {
         try {
             // Create fixed-term staking offer
             console.log('Attempting to discontinue fixed-term staking offer...');
-            const tx = await staking.discontinueStakeOffer(offerId);
+            const tx = await staking.discontinueFixedTermOffer(offerId);
 
             console.log('Waiting for transaction...');
             await tx.wait(1);
@@ -73,10 +73,10 @@ async function main(argv) {
     }
 
     // Get the list of staking offer ids
-    const updatedStakingOfferIds = await staking.getAllStakeOfferIds();
-    console.log('List of staking offers: [', updatedStakingOfferIds.join(', '), ']');
-    for (const offerId of updatedStakingOfferIds) {
-        const offer = await staking.stakeOffers(offerId);
+    lastOfferId = await staking.lastFixedTermOfferId();
+    console.log('Last offer id:', lastOfferId.toString());
+    for (let i = 1; i <= lastOfferId; i++) {
+        const offer = await staking.fixedTermOffers(i);
         if (offer[3] === false || offer[4] === true) {
             continue;
         }

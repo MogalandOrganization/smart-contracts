@@ -78,7 +78,7 @@ describe('TokenVesting', function () {
             expect(await tokenVesting.getVestingSchedulesCountByBeneficiary(beneficiary.address)).to.be.equal(1);
 
             // compute vesting schedule id
-            const vestingScheduleId = await tokenVesting.computeVestingScheduleIdForAddressAndIndex(beneficiary.address, 0);
+            const vestingScheduleId = await tokenVesting.computeVestingScheduleIdForBeneficiaryAndIndex(beneficiary.address, 0);
 
             // check that vested amount is 0
             expect(await tokenVesting.computeReleasableAmount(vestingScheduleId)).to.be.equal(0);
@@ -199,7 +199,7 @@ describe('TokenVesting', function () {
             );
 
             // compute vesting schedule id
-            const vestingScheduleId = await tokenVesting.computeVestingScheduleIdForAddressAndIndex(beneficiary.address, 0);
+            const vestingScheduleId = await tokenVesting.computeVestingScheduleIdForBeneficiaryAndIndex(beneficiary.address, 0);
 
             // set time to half the vesting period
             const halfTime = baseTime + duration / 2;
@@ -215,10 +215,10 @@ describe('TokenVesting', function () {
             await tokenVesting.waitForDeployment();
             tokenVestingAddress = await tokenVesting.getAddress();
             const expectedVestingScheduleId = '0xa279197a1d7a4b7398aa0248e95b8fcc6cdfb43220ade05d01add9c5468ea097';
-            expect((await tokenVesting.computeVestingScheduleIdForAddressAndIndex(addr1.address, 0)).toString()).to.equal(
+            expect((await tokenVesting.computeVestingScheduleIdForBeneficiaryAndIndex(addr1.address, 0)).toString()).to.equal(
                 expectedVestingScheduleId,
             );
-            expect((await tokenVesting.computeNextVestingScheduleIdForHolder(addr1.address)).toString()).to.equal(
+            expect((await tokenVesting.computeNextVestingScheduleIdForBeneficiary(addr1.address)).toString()).to.equal(
                 expectedVestingScheduleId,
             );
         });

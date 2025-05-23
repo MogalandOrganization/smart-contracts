@@ -35,26 +35,26 @@ async function main(argv) {
         return;
     }
 
-    let [rewardRate, cancellationFee, lockupDuration, adminOnly] = argv;
+    let [rate, fee, lockupDuration, adminOnly] = argv;
 
-    rewardRate = parseInt(rewardRate, 10);
-    if (isNaN(rewardRate) || rewardRate < 1 || rewardRate > 20) {
+    rate = parseInt(rate, 10);
+    if (isNaN(rate) || rate < 1 || rate > 20) {
         console.error('Invalid amount reward rate. It should be a number between 1 and 20.');
         return;
     }
-    rewardRate = hre.ethers.parseUnits((rewardRate / 100).toString(), 18);
-    cancellationFee = parseInt(cancellationFee, 10);
-    if (isNaN(cancellationFee) || cancellationFee < 1 || cancellationFee > 20) {
+    rate = hre.ethers.parseUnits((rate / 100).toString(), 18);
+    fee = parseInt(fee, 10);
+    if (isNaN(fee) || fee < 1 || fee > 20) {
         console.error('Invalid amount cancellation fee. It should be a number between 1 and 20.');
         return;
     }
-    cancellationFee = hre.ethers.parseUnits((cancellationFee / 100).toString(), 18);
-    lockupDuration = parseInt(lockupDuration, 10);
-    if (isNaN(lockupDuration) || !lockupDuration in [30, 60, 90, 120, 180, 365]) {
-        console.error('Invalid amount lockup duration. It should be a number in [30, 60, 90, 120, 180, 365].');
+    fee = fee; // It's the value in percent, no transformation needed
+    lockupDuration = parseFloat(lockupDuration);
+    if (isNaN(lockupDuration) || ![30, 60, 91, 182, 365].includes(lockupDuration)) {
+        console.error('Invalid amount lockup duration. It should be a number in [30, 60, 91, 182, 365].');
         return;
     }
-    lockupDuration *= 24 * 60 * 60; // Convert to seconds
+    lockupDuration = Math.floor(lockupDuration * 24 * 60 * 60); // Convert to seconds
     adminOnly = adminOnly === 'true' ? true : false;
 
     // Get the contract address from command line or config
@@ -69,10 +69,10 @@ async function main(argv) {
     const staking = await Staking.attach(stakingAddress).connect(signer);
 
     // Get the list of staking offer ids
-    const stakingOfferIds = await staking.getAllStakeOfferIds();
-    console.log('List of staking offers: [', stakingOfferIds.join(', '), ']');
-    for (const offerId of stakingOfferIds) {
-        const offer = await staking.stakeOffers(offerId);
+    let lastOfferId = await staking.lastFixedTermOfferId();
+    console.log('Last offer id:', lastOfferId.toString());
+    for (let i = 1; i <= lastOfferId; i++) {
+        const offer = await staking.fixedTermOffers(i);
         if (offer[3] === false || offer[4] === true) {
             continue;
         }
@@ -91,11 +91,10 @@ async function main(argv) {
         );
     }
 
-    return;
     try {
         // Create fixed-term staking offer
         console.log('Attempting to create fixed-term staking offer...');
-        const tx = await staking.createStakeOffer(rewardRate, cancellationFee, lockupDuration, adminOnly);
+        const tx = await staking.createFixedTermOffer(rate, fee, lockupDuration, adminOnly);
 
         console.log('Waiting for transaction...');
         await tx.wait(1);
@@ -111,10 +110,10 @@ async function main(argv) {
     }
 
     // Get the list of staking offer ids
-    const updatedStakingOfferIds = await staking.getAllStakeOfferIds();
-    console.log('List of staking offers: [', updatedStakingOfferIds.join(', '), ']');
-    for (const offerId of updatedStakingOfferIds) {
-        const offer = await staking.stakeOffers(offerId);
+    lastOfferId = await staking.lastFixedTermOfferId();
+    console.log('Last offer id:', lastOfferId.toString());
+    for (let i = 1; i <= lastOfferId; i++) {
+        const offer = await staking.fixedTermOffers(i);
         if (offer[3] === false || offer[4] === true) {
             continue;
         }

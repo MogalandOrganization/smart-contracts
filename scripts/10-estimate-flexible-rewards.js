@@ -1,6 +1,5 @@
 // cSpell:ignore moga
 
-const { cons } = require('fp-ts/lib/NonEmptyArray2v');
 const hre = require('hardhat');
 require('dotenv').config();
 

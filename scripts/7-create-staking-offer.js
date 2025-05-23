@@ -44,7 +44,7 @@ async function main(argv) {
     }
     rate = hre.ethers.parseUnits((rate / 100).toString(), 18);
     fee = parseInt(fee, 10);
-    if (isNaN(cancellationFee) || cancellationFee < 1 || cancellationFee > 20) {
+    if (isNaN(fee) || fee < 1 || fee > 20) {
         console.error('Invalid amount cancellation fee. It should be a number between 1 and 20.');
         return;
     }

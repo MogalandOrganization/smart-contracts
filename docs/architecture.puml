@@ -1,0 +1,94 @@
+' cSpell:ignore startuml enduml skinparam moga unstake
+@startuml MogaLand Architecture
+
+' Style definitions
+skinparam class {
+    BackgroundColor<<Client>> LightBlue
+    BackgroundColor<<EVM>> LightGreen
+    BackgroundColor<<Blockchain>> LightYellow
+    BorderColor Black
+    ArrowColor Black
+}
+
+' Group 1: Client
+package "Client" {
+    class App <<Client>> {
+    }
+    
+    class TokenDashboard <<Client>> {
+        - address: string
+        - balance: BigNumber
+        - totalSupply: BigNumber
+    }
+    
+    class VestingDashboard <<Client>> {
+        - startDate: Date
+        - duration: number
+        - sliceNb: number
+        - amount: BigNumber
+        - claimed: BigNumber
+        - claimable: BigNumber
+        
+        + claim(): Promise<void>
+        + getTotalVested(): BigNumber
+    }
+    
+    class StakingDashboard <<Client>> {
+        - rate: BigNumber
+        - fee: BigNumber
+        - lockupDuration: number
+        
+        + stake(): Promise<void>
+        + unstake(): Promise<void>
+        + getTotalStaked(): BigNumber
+    }
+    
+    App "1" -- "1" TokenDashboard
+    App "1" -- "*" VestingDashboard
+    App "1" -- "*" StakingDashboard
+}
+
+' Group 2: EVM
+package "Ethereum Virtual Machines" {
+    class EVM <<EVM>> {
+    }
+}
+
+' Group 3: Blockchain
+package "EDU Chain Blockchain" {
+    class ERC20 <<Blockchain>> {
+        + getAddress(): string
+        + totalSupply(): BigNumber
+        + transfer(to: string, amount: BigNumber): Promise<boolean>
+    }
+    
+    class TokenContract <<Blockchain>> {
+    }
+    
+    class VestingContract <<Blockchain>> {
+        + getVestingForAddress(address: string): Promise<Vesting[]>
+        + getVestingById(id: number): Promise<Vesting>
+        + claim(id: number): Promise<void>
+    }
+    
+    class StakingContract <<Blockchain>> {
+        + getStakingOfferIds(): Promise<number[]>
+        + getStakingOfferById(id: number): Promise<StakingOffer>
+        + stake(offerId: number, amount: BigNumber): Promise<void>
+        + unstake(stakeId: number): Promise<void>
+        + getStakeForAddress(address: string): Promise<Stake[]>
+    }
+    
+    TokenContract --|> ERC20
+}
+
+' Relationships between groups
+TokenDashboard ..> "*" EVM : interacts with
+VestingDashboard ..> "*" EVM : interacts with
+StakingDashboard ..> "*" EVM : interacts with
+
+EVM "*" ..> TokenContract : executes
+EVM "*" ..> VestingContract : executes
+EVM "*" ..> StakingContract : executes
+
+@enduml

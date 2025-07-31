@@ -1,20 +1,22 @@
 // cSpell:ignore moga
 
 const hre = require('hardhat');
-require('dotenv').config();
+require('dotenv').config({ quiet: true });
 
 async function main(argv) {
     // Validate inputs
     if (argv.length !== 3) {
         console.log(
-            '1. The wallet address of the recipient is required.\n' +
-                '2. The amount of MOGA tokens to vest is required.\n' +
-                '3. The vesting type is required. (non-revocable or anything else)',
+            [
+                '1. The vesting type is required. (non-revocable or anything else)',
+                '2. The amount of MOGA tokens to vest is required.',
+                '3. The wallet address of the recipient is required.',
+            ].join('\n'),
         );
         return;
     }
 
-    const [recipient, rawAmount, vestingType] = argv;
+    const [vestingType, rawAmount, recipient] = argv;
 
     if (!hre.ethers.isAddress(recipient)) {
         console.error('Invalid recipient address');
@@ -76,30 +78,29 @@ async function main(argv) {
     try {
         const startTime = Math.floor(Date.now() / 1000); // Unix timestamp in seconds
         const oneDay = 24 * 60 * 60; // 24 hours in seconds
-        const eightDays = 8 * oneDay; // 8 days in seconds
 
         console.log(`Creating vesting schedule for ${recipient} with ${rawAmount} MOGA tokens`);
         console.log(`Start time: ${startTime}`);
-        console.log(`Cliff duration: ${oneDay} seconds (1 day)`);
-        console.log(`Total duration: ${eightDays} seconds (8 days)`);
+        console.log(`Cliff duration: ${oneDay * 3} seconds (3 days)`);
+        console.log(`Total duration: ${oneDay * 10} seconds (10 days)`);
         console.log(`Slice period: ${oneDay} seconds (1 day)`);
 
         const tx = await vesting.createVestingSchedule(
             recipient,
             startTime, // start time in seconds
-            oneDay, // cliff duration: 1 day in seconds
-            eightDays, // total duration: 8 days in seconds
+            oneDay * 3, // cliff duration: 3 days in seconds
+            oneDay * 10, // total duration: 10 days in seconds
             oneDay, // slice period: 1 day in seconds
             vestingType !== 'non-revocable',
             amount,
         );
-        console.log('Transaction hash:', tx.hash); // 0x9443f84d1fa850f23dfafd04173a01f311f0b99d8529b06d50963994ca5da85b
+        console.log('Transaction hash:', tx.hash);
         const blockExplorerUrl = process.env.BLOCK_EXPLORER_URL;
         console.log(`${blockExplorerUrl}/tx/${tx.hash}`);
 
         await tx.wait(1);
 
-        console.log('Vesting schedule created successfully');
+        console.log('Vesting schedule created successfully', tx.hash);
     } catch (error) {
         console.error('Detailed error:', error.message);
         // If available, get the revert reason

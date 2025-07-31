@@ -1,7 +1,7 @@
 // cSpell:ignore moga
 
 const hre = require('hardhat');
-require('dotenv').config();
+require('dotenv').config({ quiet: true });
 
 async function main(argv) {
     // Validate inputs

@@ -1,16 +1,18 @@
 // cSpell:ignore moga
 
 const hre = require('hardhat');
-require('dotenv').config();
+require('dotenv').config({ quiet: true });
 
 async function main(argv) {
     // Validate inputs
     if (argv.length !== 2) {
-        console.log('1. The wallet address of the recipient is required.\n' + '2. The amount of MOGA tokens to transfer is required.\n');
+        console.log(
+            ['1. The amount of MOGA tokens to transfer is required.', '2. The wallet address of the recipient is required.'].join('\n'),
+        );
         return;
     }
 
-    const [recipient, rawAmount] = argv;
+    const [rawAmount, recipient] = argv;
 
     if (!hre.ethers.isAddress(recipient)) {
         console.error('Invalid recipient address');
@@ -55,7 +57,7 @@ async function main(argv) {
         console.log('Estimating gas for transfer...');
         const estimatedGas = await mogaToken.transfer.estimateGas(recipient, amount);
         console.log('Estimated gas:', estimatedGas.toString());
-        
+
         // Transfer the amount
         console.log('Attempting to transfer tokens...');
         const tx = await mogaToken.transfer(recipient, amount, {
@@ -65,7 +67,7 @@ async function main(argv) {
         console.log('Waiting for transaction...');
         await tx.wait(1);
 
-        console.log('Transfer successful! ' + tx.hash);
+        console.log('Transfer successful! ', tx.hash);
     } catch (error) {
         console.error('Detailed error:', error.message);
         // If available, get the revert reason

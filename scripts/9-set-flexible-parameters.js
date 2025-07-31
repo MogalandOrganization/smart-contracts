@@ -1,13 +1,12 @@
 // cSpell:ignore moga
 
 const hre = require('hardhat');
-require('dotenv').config();
+require('dotenv').config({ quiet: true });
 
 async function main(argv) {
     // Validate inputs
     if (argv.length !== 2) {
-        console.log('The rate in percent is expected, between [1; 20].');
-        console.log('The fee in percent is expected, between [1; 20].');
+        console.log(['The rate in percent is expected, between [1; 20].', 'The fee in percent is expected, between [1; 20].'].join('\n'));
         return;
     }
 
@@ -59,7 +58,7 @@ async function main(argv) {
 
         console.log('Fee set!');
 
-        console.log('Transfer successful! ' + tx.hash);
+        console.log('Transfer successful! ', tx.hash);
     } catch (error) {
         console.error('Detailed error:', error.message);
         // If available, get the revert reason

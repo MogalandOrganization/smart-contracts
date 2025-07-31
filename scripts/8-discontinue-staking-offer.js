@@ -1,7 +1,7 @@
 // cSpell:ignore moga
 
 const hre = require('hardhat');
-require('dotenv').config();
+require('dotenv').config({ quiet: true });
 
 async function main(argv) {
     // Validate inputs
@@ -62,7 +62,7 @@ async function main(argv) {
             await tx.wait(1);
 
             console.log('Discontinuation of fixed-term staking offer successful!');
-            console.log('Transfer successful! ' + tx.hash);
+            console.log('Transfer successful! ', tx.hash);
         } catch (error) {
             console.error('Detailed error:', error.message);
             // If available, get the revert reason

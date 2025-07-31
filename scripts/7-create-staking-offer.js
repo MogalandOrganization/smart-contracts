@@ -2,7 +2,7 @@
 
 const BN = require('bignumber.js');
 const hre = require('hardhat');
-require('dotenv').config();
+require('dotenv').config({ silent: true });
 
 function calculateReward(amount, stakingPeriod = 'short') {
     // APY in basis points (1 basis point = 0.01%)
@@ -27,10 +27,12 @@ async function main(argv) {
     if (argv.length !== 4) {
         // Validate inputs
         console.log(
-            'The reward rate is required as first parameter--value in percent, between [1; 20].\n' +
-                'The cancellation fee is required as second parameter--value in percent, between [1; 20].\n' +
-                'The lockup duration is required as third parameter--value in days, with 30 days per month, 365 days for a year.\n' +
+            [
+                'The reward rate is required as first parameter--value in percent, between [1; 20].',
+                'The cancellation fee is required as second parameter--value in percent, between [1; 20].',
+                'The lockup duration is required as third parameter--value in days, with 30 days per month, 365 days for a year.',
                 'The indication of an admin-only staking contract is required as fourth parameter--value is true or anything else.',
+            ].join('\n'),
         );
         return;
     }
@@ -55,7 +57,7 @@ async function main(argv) {
         return;
     }
     lockupDuration = Math.floor(lockupDuration * 24 * 60 * 60); // Convert to seconds
-    adminOnly = adminOnly === 'true' ? true : false;
+    adminOnly = adminOnly === 'admin-only' ? true : false;
 
     // Get the contract address from command line or config
     const stakingAddress = process.env.STAKING_CONTRACT;
@@ -73,9 +75,9 @@ async function main(argv) {
     console.log('Last offer id:', lastOfferId.toString());
     for (let i = 1; i <= lastOfferId; i++) {
         const offer = await staking.fixedTermOffers(i);
-        if (offer[3] === false || offer[4] === true) {
-            continue;
-        }
+        // if (offer[3] === false || offer[4] === true) {
+        //     continue;
+        // }
         console.log(
             'Staking offer: { rate:',
             offer[0],
@@ -100,7 +102,7 @@ async function main(argv) {
         await tx.wait(1);
 
         console.log('Creation of fixed-term staking offer successful!');
-        console.log('Transfer successful! ' + tx.hash);
+        console.log('Transfer successful! ', tx.hash);
     } catch (error) {
         console.error('Detailed error:', error.message);
         // If available, get the revert reason
@@ -114,9 +116,9 @@ async function main(argv) {
     console.log('Last offer id:', lastOfferId.toString());
     for (let i = 1; i <= lastOfferId; i++) {
         const offer = await staking.fixedTermOffers(i);
-        if (offer[3] === false || offer[4] === true) {
-            continue;
-        }
+        // if (offer[3] === false || offer[4] === true) {
+        //     continue;
+        // }
         console.log(
             'Staking offer: { rate:',
             offer[0],

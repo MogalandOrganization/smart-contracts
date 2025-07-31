@@ -39,8 +39,13 @@ HARDHAT_NETWORK=opencampus node scripts/3-transfer-to-vesting.js [amount]
 HARDHAT_NETWORK=opencampus node scripts/4-create-vesting-schedule.js [recipient-wallet-address] [amount] [non-revocable / anything-else]
 HARDHAT_NETWORK=opencampus node scripts/5-transfer-tokens.js [recipient-wallet-address] [amount]
 HARDHAT_NETWORK=opencampus node scripts/6-transfer-to-staking.js [amount]
-HARDHAT_NETWORK=opencampus node scripts/7-create-staking-offer.js [rate] [fee] [lockup duration] [true / anything-else]
+HARDHAT_NETWORK=opencampus node scripts/7-create-staking-offer.js [rate] [fee] [lockup duration] [admin-only / anything-else]
 HARDHAT_NETWORK=opencampus node scripts/8-discontinue-staking-offer.js [offer-id]
+HARDHAT_NETWORK=opencampus node scripts/9-set-flexible-parameters.js [rate] [fee]
+HARDHAT_NETWORK=opencampus node scripts/10-estimate-flexible-rewards.js [recipient-wallet-address]
+HARDHAT_NETWORK=opencampus node scripts/11-withdraw-from-staking.js
+HARDHAT_NETWORK=opencampus node scripts/12-stake-for-beneficiary.js
+HARDHAT_NETWORK=opencampus node scripts/13-stake-for-many-beneficiaries.js
 ```
 
 ```shell

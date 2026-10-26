@@ -62,8 +62,8 @@ contract MogaStaking is Ownable, Pausable, ReentrancyGuard, DSMath, IMogaStaking
 
     event StakeOfferCreated(uint256 _stakeOfferId);
     event StakeOfferDiscontinued(uint256 _stakeOfferId);
-    event FixedTermDeposit(address _address, uint256 _amount, uint256 _stakeId);
-    event FixedTermWithdraw(address _address, uint256 _amount);
+    event FixedTermDeposit(address indexed _address, uint256 _amount, uint256 _offerId, uint256 _stakeId, uint256 _timestamp);
+    event FixedTermWithdraw(address indexed _address, uint256 _amount, uint256 _stakeId, uint256 _timestamp);
     event FixedTermClaim(address _address, uint256 _amount);
 
     error StakeOfferNotActive(uint256 _stakeOfferId);
@@ -96,8 +96,8 @@ contract MogaStaking is Ownable, Pausable, ReentrancyGuard, DSMath, IMogaStaking
 
     event FlexibleTermRateModified(uint256 _newRate);
     event FlexibleTermFeeModified(uint256 _newFee);
-    event FlexibleTermDeposit(address _address, uint256 _amount);
-    event FlexibleTermWithdraw(address _address, uint256 _amount);
+    event FlexibleTermDeposit(address indexed _address, uint256 _amount, uint256 _timestamp);
+    event FlexibleTermWithdraw(address indexed _address, uint256 _amount, uint256 _timestamp);
     event CompoundFlexibleTerm(address _address, uint256 _amount);
     event RewardIndexUpdated(uint256 _newIndex);
 
@@ -293,7 +293,7 @@ contract MogaStaking is Ownable, Pausable, ReentrancyGuard, DSMath, IMogaStaking
         require(newTotalInterest >= totalInterest, 'TokenStaking: totalInterest overflow');
         totalInterest = newTotalInterest;
 
-        emit FixedTermDeposit(msg.sender, _amount, stakeId);
+        emit FixedTermDeposit(msg.sender, _amount, _stakeOfferId, stakeId, block.timestamp);
     }
 
     /**
@@ -358,7 +358,7 @@ contract MogaStaking is Ownable, Pausable, ReentrancyGuard, DSMath, IMogaStaking
 
         totalStaked -= initialStake;
         totalInterest -= balance - initialStake;
-        emit FixedTermWithdraw(msg.sender, afterFee);
+        emit FixedTermWithdraw(msg.sender, afterFee, _stakeId, block.timestamp);
     }
 
     function getFixedTermRewards(uint256 _stakeId) external view returns (uint256) {
@@ -536,7 +536,7 @@ contract MogaStaking is Ownable, Pausable, ReentrancyGuard, DSMath, IMogaStaking
         // Emit event for tracking principal changes
         emit FlexibleTermPrincipalUpdated(oldFlexiblePrincipal, newFlexiblePrincipal);
 
-        emit FlexibleTermDeposit(msg.sender, _amount);
+        emit FlexibleTermDeposit(msg.sender, _amount, block.timestamp);
     }
 
     /**
@@ -710,7 +710,7 @@ contract MogaStaking is Ownable, Pausable, ReentrancyGuard, DSMath, IMogaStaking
         // Transfer tokens to user
         token.safeTransfer(msg.sender, totalAmount);
 
-        emit FlexibleTermWithdraw(msg.sender, totalAmount);
+        emit FlexibleTermWithdraw(msg.sender, totalAmount, block.timestamp);
     }
 
     // ----------
@@ -839,7 +839,7 @@ contract MogaStaking is Ownable, Pausable, ReentrancyGuard, DSMath, IMogaStaking
         require(newTotalInterest >= totalInterest, 'TokenStaking: totalInterest overflow');
         totalInterest = newTotalInterest;
 
-        emit FixedTermDeposit(_beneficiary, _amount, stakeId);
+        emit FixedTermDeposit(_beneficiary, _amount, _stakeOfferId, stakeId, block.timestamp);
     }
 
     function setFlexibleTermRate(uint256 _rate) public onlyOwner {

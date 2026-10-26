@@ -11,15 +11,13 @@ async function main(argv) {
         return;
     }
 
-    let [offerId, amount, beneficiary] = argv;
+    let [offerId] = argv;
 
     offerId = parseInt(offerId, 10);
     if (isNaN(offerId) || offerId < 1) {
         console.error('Invalid offer id. It should be a positive integer.');
         return;
     }
-
-    // TODO: check the ethereum address validity
 
     // Get the contract address from command line or config
     const stakingAddress = process.env.STAKING_CONTRACT;
@@ -49,23 +47,52 @@ async function main(argv) {
     );
 
     const users = [];
+    console.log('^^^ User count:', users.length);
+
+    const userMap = {};
+    const filteredUsers = [];
     for (let i = 0; i < users.length; i++) {
+        const user = users[i];
+        const [telegram, wallet, amount] = user;
+        if (wallet && !userMap[wallet]) {
+            userMap[wallet] = true;
+            filteredUsers.push(user);
+        }
+    }
+    console.log('^^^ Filtered user count:', filteredUsers.length);
+
+    const start = parseInt(startIdx, 10) * 50;
+    const end = Math.min(start + 50, filteredUsers.length);
+    console.log('^^^ From:', start, 'to:', end);
+
+    for (let i = start; i < end; i++) {
         try {
-            const user = users[i];
-            const [object, operation, role, email, nickname, zealy, twitter, discord, wallet, amount, date, hash] = user;
+            const user = filteredUsers[i];
+            //  ["timestamp","email","fin_ed_status","region","reason","hear_about_us","wallet_address",""],
+            // const [object, operation, role, email, nickname, zealy, twitter, discord, wallet, amount, date, hash] = user;
+            const [telegram, wallet, amount] = user;
+            const object = undefined,
+                email = undefined,
+                operation = undefined,
+                role = undefined,
+                nickname = undefined,
+                zealy = undefined,
+                twitter = undefined,
+                discord = telegram;
+            const date = '';
+            // const amount = 50;
             if (isNaN(amount) || amount <= 0) {
-                console.error('Invalid amount specified');
+                console.error('Invalid amount specified', amount);
                 return;
             }
             const convertedAmount = hre.ethers.parseUnits(amount.toString(), 18);
 
             // Allocate the stake for the beneficiary
             let tx = { hash: '' };
-            if (wallet.startsWith('0x')) {
-                tx = await staking.stakeFixedTermForBeneficiary(offerId, convertedAmount, wallet);
-                await tx.wait(1);
-                // tx = { hash: '0x1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef--' + i };
-            }
+            // if (wallet.startsWith('0x')) {
+            //     tx = await staking.stakeFixedTermForBeneficiary(offerId, convertedAmount, wallet);
+            //     await tx.wait(1);
+            // }
 
             console.log(
                 `${object || ''},${operation || ''},${role || ''},${email || ''},${nickname || ''},${zealy || ''},${twitter || ''},${

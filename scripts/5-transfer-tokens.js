@@ -1,7 +1,9 @@
 // cSpell:ignore moga
 
-const hre = require('hardhat');
-require('dotenv').config({ quiet: true });
+import hre from 'hardhat';
+import dotenv from 'dotenv';
+dotenv.config({ quiet: true });
+const { ethers } = await hre.network.connect(process.env.HARDHAT_NETWORK);
 
 async function main(argv) {
     // Validate inputs
@@ -14,7 +16,7 @@ async function main(argv) {
 
     const [rawAmount, recipient] = argv;
 
-    if (!hre.ethers.isAddress(recipient)) {
+    if (!ethers.isAddress(recipient)) {
         console.error('Invalid recipient address');
         return;
     }
@@ -23,15 +25,15 @@ async function main(argv) {
         console.error('Invalid amount specified');
         return;
     }
-    const amount = hre.ethers.parseUnits(rawAmount, 18);
+    const amount = ethers.parseUnits(rawAmount, 18);
 
     // Get the contract address from command line or config
     const contractAddress = process.env.MOGA_CONTRACT;
 
     // Get the contract factory and signer
-    const [signer] = await hre.ethers.getSigners(); // Get the default signer
+    const [signer] = await ethers.getSigners(); // Get the default signer
     console.log('Signer address:', signer.address);
-    const MogaToken = await hre.ethers.getContractFactory('MogaToken');
+    const MogaToken = await ethers.getContractFactory('MogaToken');
 
     // Attach to the deployed contract
     const mogaToken = await MogaToken.attach(contractAddress).connect(signer);
@@ -42,11 +44,11 @@ async function main(argv) {
 
     // Check if tokens have already been minted
     const currentSupply = await mogaToken.totalSupply();
-    console.log('Current total supply:', hre.ethers.formatUnits(currentSupply, 18));
+    console.log('Current total supply:', ethers.formatUnits(currentSupply, 18));
 
     // Balance checks before transfer
     const senderBalance = await mogaToken.balanceOf(signer.address);
-    console.log('Available supply:', hre.ethers.formatUnits(senderBalance, 18));
+    console.log('Available supply:', ethers.formatUnits(senderBalance, 18));
     if (senderBalance < amount) {
         console.error('Insufficient balance for transfer');
         return;
@@ -82,7 +84,7 @@ async function main(argv) {
 
     // Optional: Check the total supply after TGE
     const newSenderBalance = await mogaToken.balanceOf(signer.address);
-    console.log('New available supply:', hre.ethers.formatUnits(newSenderBalance, 18));
+    console.log('New available supply:', ethers.formatUnits(newSenderBalance, 18));
 }
 
 main(process.argv.slice(2))

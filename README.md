@@ -17,8 +17,8 @@ TBD: use env file to setup deployment details
 
 ```shell
 npm ci
-npx hardhat compile
-npx hardhat test
+npm run compile   # npx hardhat compile
+npm test          # npx hardhat test mocha
 npx hardhat node
 npx solc --include-path node_modules/ --base-path . contracts/MogaToken.sol --abi --verbose --output-dir abi/
 npx solc --include-path node_modules/ --base-path . contracts/MogaVesting.sol --abi --verbose --output-dir abi/
@@ -54,7 +54,9 @@ npx hardhat run --network edu-chain scripts/1-deploy.js
 
 ### Special EDUchain/OPENCAMPUS consideration
 
-The etherscan API key has been set to "empty" in the hardhat conf since for testnet this is not required.
+The etherscan API key is read through `configVariable('ETHERSCAN_API_KEY')` in the hardhat conf (`verify.etherscan`). It is only resolved when running `hardhat verify`; set `ETHERSCAN_API_KEY` in `.env` beforehand (the EDUchain/OPENCAMPUS explorers are Blockscout and do not need a real key).
+
+The project uses Hardhat 3 and is ESM-only (`"type": "module"`). Secrets such as `PRIVATE_KEY` are resolved from the environment (or the Hardhat keystore) only when a network that uses them is connected, so `compile` and `test` run without a `.env` file.
 
 ### Delayed TGE event
 

@@ -1,8 +1,10 @@
 // cSpell:ignore moga
 
-const BN = require('bignumber.js');
-const hre = require('hardhat');
-require('dotenv').config({ silent: true });
+import BN from 'bignumber.js';
+import hre from 'hardhat';
+import dotenv from 'dotenv';
+dotenv.config({ silent: true });
+const { ethers } = await hre.network.connect(process.env.HARDHAT_NETWORK);
 
 async function main(argv) {
     if (argv.length !== 3) {
@@ -28,9 +30,9 @@ async function main(argv) {
     const stakingAddress = process.env.STAKING_CONTRACT;
 
     // Get the contract factory and signer
-    const [signer] = await hre.ethers.getSigners(); // Get the default signer
+    const [signer] = await ethers.getSigners(); // Get the default signer
     console.log('Signer address:', signer.address);
-    const Staking = await hre.ethers.getContractFactory('MogaStaking');
+    const Staking = await ethers.getContractFactory('MogaStaking');
 
     // Attach to the deployed contract
     const staking = await Staking.attach(stakingAddress).connect(signer);
@@ -56,7 +58,7 @@ async function main(argv) {
         console.error('Invalid amount specified');
         return;
     }
-    amount = hre.ethers.parseUnits(amount.toString(), 18);
+    amount = ethers.parseUnits(amount.toString(), 18);
 
     try {
         // Allocate the stake for the beneficiary

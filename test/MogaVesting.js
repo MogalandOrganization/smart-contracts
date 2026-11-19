@@ -1,10 +1,11 @@
 // cSpell:ignore moga addrs
 
-const { expect } = require('chai');
-const hre = require('hardhat');
-const helpers = require('@nomicfoundation/hardhat-network-helpers');
+import { expect } from 'chai';
+import hre from 'hardhat';
 
-describe('TokenVesting', function () {
+const { ethers, networkHelpers } = await hre.network.connect();
+
+describe('MogaVesting', function () {
     let Token;
     let testToken;
     let testTokenAddress;
@@ -17,10 +18,10 @@ describe('TokenVesting', function () {
     let tokenCap = 1000000000;
 
     before(async function () {
-        Token = await hre.ethers.getContractFactory('MogaToken');
-        TokenVesting = await hre.ethers.getContractFactory('MogaVesting');
+        Token = await ethers.getContractFactory('MogaToken');
+        TokenVesting = await ethers.getContractFactory('MogaVesting');
 
-        [owner, addr1, addr2, ...addrs] = await hre.ethers.getSigners();
+        [owner, addr1, addr2, ...addrs] = await ethers.getSigners();
     });
 
     beforeEach(async function () {
@@ -55,7 +56,7 @@ describe('TokenVesting', function () {
             expect(await tokenVesting.getWithdrawableAmount()).to.equal(1000);
 
             //const baseTime = 1622551248;
-            const baseTime = await helpers.time.latest();
+            const baseTime = await networkHelpers.time.latest();
             const beneficiary = addr1;
             const startTime = baseTime;
             const cliff = 0;
@@ -87,7 +88,7 @@ describe('TokenVesting', function () {
             const halfTime = baseTime + duration / 2;
             //await tokenVesting.setCurrentTime(halfTime);
 
-            await helpers.time.increaseTo(halfTime);
+            await networkHelpers.time.increaseTo(halfTime);
 
             // check that vested amount is half the total amount to vest
             expect(await tokenVesting.connect(beneficiary).computeReleasableAmount(vestingScheduleId)).to.be.equal(50);
@@ -116,7 +117,7 @@ describe('TokenVesting', function () {
 
             // set current time after the end of the vesting period
             //await tokenVesting.setCurrentTime(baseTime + duration + 1);
-            await helpers.time.increaseTo(baseTime + duration + 1);
+            await networkHelpers.time.increaseTo(baseTime + duration + 1);
 
             // check that the vested amount is 90
             expect(await tokenVesting.connect(beneficiary).computeReleasableAmount(vestingScheduleId)).to.be.equal(90);
@@ -178,7 +179,7 @@ describe('TokenVesting', function () {
                 .to.emit(testToken, 'Transfer')
                 .withArgs(owner.address, tokenVestingAddress, 1000);
 
-            const baseTime = await helpers.time.latest();
+            const baseTime = await networkHelpers.time.latest();
             const beneficiary = addr1;
             const startTime = baseTime;
             const cliff = 0;
@@ -203,7 +204,7 @@ describe('TokenVesting', function () {
 
             // set time to half the vesting period
             const halfTime = baseTime + duration / 2;
-            await helpers.time.increaseTo(halfTime);
+            await networkHelpers.time.increaseTo(halfTime);
 
             await expect(tokenVesting.revoke(vestingScheduleId))
                 .to.emit(testToken, 'Transfer')

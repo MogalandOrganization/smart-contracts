@@ -1,7 +1,9 @@
 // cSpell:ignore moga
 
-const hre = require('hardhat');
-require('dotenv').config({ quiet: true });
+import hre from 'hardhat';
+import dotenv from 'dotenv';
+dotenv.config({ quiet: true });
+const { ethers } = await hre.network.connect(process.env.HARDHAT_NETWORK);
 
 async function main(argv) {
     // Validate inputs
@@ -16,17 +18,17 @@ async function main(argv) {
         console.error('Invalid amount specified');
         return;
     }
-    const amount = hre.ethers.parseUnits(rawAmount, 18);
+    const amount = ethers.parseUnits(rawAmount, 18);
 
     // Get the contract address from command line or config
     const contractAddress = process.env.MOGA_CONTRACT;
     const vestingAddress = process.env.VESTING_CONTRACT;
 
     // Get the contract factory and signer
-    const [signer] = await hre.ethers.getSigners(); // Get the default signer
+    const [signer] = await ethers.getSigners(); // Get the default signer
     console.log('Signer address:', signer.address);
-    const MogaToken = await hre.ethers.getContractFactory('MogaToken');
-    const Vesting = await hre.ethers.getContractFactory('MogaVesting');
+    const MogaToken = await ethers.getContractFactory('MogaToken');
+    const Vesting = await ethers.getContractFactory('MogaVesting');
 
     // Attach to the deployed contract
     const mogaToken = await MogaToken.attach(contractAddress).connect(signer);
@@ -43,7 +45,7 @@ async function main(argv) {
 
     // Balance checks before transfer
     const senderBalance = await mogaToken.balanceOf(signer.address);
-    console.log('Available supply:', hre.ethers.formatUnits(senderBalance, 18));
+    console.log('Available supply:', ethers.formatUnits(senderBalance, 18));
     if (senderBalance < amount) {
         console.error('Insufficient balance for transfer');
         return;
@@ -51,7 +53,7 @@ async function main(argv) {
 
     // Check the remaining tokens the spender is allowed to spend on the behalf of the owner
     const initialAllowance = await mogaToken.allowance(mogaOwner, vestingAddress);
-    console.log('Amount the vesting contract can spend:', hre.ethers.formatUnits(initialAllowance, 18));
+    console.log('Amount the vesting contract can spend:', ethers.formatUnits(initialAllowance, 18));
     if (initialAllowance > BigInt(0)) {
         console.log('The vesting contract is already approved to spend tokens on behalf of the owner');
         return;
@@ -66,7 +68,7 @@ async function main(argv) {
 
     // Check the remaining tokens the spender is allowed to spend on the behalf of the owner
     const finalAllowance = await mogaToken.allowance(mogaOwner, vestingAddress);
-    console.log('Amount the vesting contract can spend:', hre.ethers.formatUnits(finalAllowance, 18));
+    console.log('Amount the vesting contract can spend:', ethers.formatUnits(finalAllowance, 18));
 
     // Transfer tokens to the vesting contract
     if (finalAllowance !== BigInt(0)) {
@@ -80,11 +82,11 @@ async function main(argv) {
 
         // Check the MOGA balance of the vesting contract
         const vestingBalance = await mogaToken.balanceOf(vestingAddress);
-        console.log('Vesting contract balance:', hre.ethers.formatUnits(vestingBalance, 18));
+        console.log('Vesting contract balance:', ethers.formatUnits(vestingBalance, 18));
 
         // Check the MOGA balance of the owner
         const ownerBalance = await mogaToken.balanceOf(mogaOwner);
-        console.log('Owner balance:', hre.ethers.formatUnits(ownerBalance, 18));
+        console.log('Owner balance:', ethers.formatUnits(ownerBalance, 18));
     }
 }
 

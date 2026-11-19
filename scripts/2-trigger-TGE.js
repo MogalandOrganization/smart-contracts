@@ -1,14 +1,16 @@
 // cSpell:ignore moga
 
-const hre = require('hardhat');
-require('dotenv').config({ quiet: true });
+import hre from 'hardhat';
+import dotenv from 'dotenv';
+dotenv.config({ quiet: true });
+const { ethers } = await hre.network.connect(process.env.HARDHAT_NETWORK);
 
 async function main(argv) {
     // Get the contract address from command line or config
     const contractAddress = process.env.MOGA_CONTRACT;
 
     // Get the contract factory
-    const MogaToken = await hre.ethers.getContractFactory('MogaToken');
+    const MogaToken = await ethers.getContractFactory('MogaToken');
 
     // Attach to the deployed contract
     const mogaToken = await MogaToken.attach(contractAddress);
@@ -22,7 +24,7 @@ async function main(argv) {
 
     // Check if tokens have already been minted
     const currentSupply = await mogaToken.totalSupply();
-    console.log('Current total supply before TGE:', hre.ethers.formatUnits(currentSupply, 18));
+    console.log('Current total supply before TGE:', ethers.formatUnits(currentSupply, 18));
 
     try {
         // Trigger the TGE
@@ -43,7 +45,7 @@ async function main(argv) {
 
     // Optional: Check the total supply after TGE
     const totalSupply = await mogaToken.totalSupply();
-    console.log('Total supply after TGE:', hre.ethers.formatUnits(totalSupply, 18));
+    console.log('Total supply after TGE:', ethers.formatUnits(totalSupply, 18));
 }
 
 main(process.argv.slice(2))

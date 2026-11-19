@@ -1,4 +1,5 @@
-const hre = require('hardhat');
+import hre from 'hardhat';
+const { ethers } = await hre.network.connect(process.env.HARDHAT_NETWORK);
 
 const CONSTANTS = {
     WAD_DECIMALS: 18,
@@ -10,9 +11,9 @@ class StakingVerificationService {
     constructor() {
         // const rpcUrl = process.env.RPC_URL;
         const rpcUrl = process.env.RPC_PROVIDER_URL;
-        this.provider = new hre.ethers.JsonRpcProvider(rpcUrl);
+        this.provider = new ethers.JsonRpcProvider(rpcUrl);
 
-        this.stakingContract = new hre.ethers.Contract(
+        this.stakingContract = new ethers.Contract(
             process.env.STAKING_CONTRACT,
             [
                 'function fixedTermOffers(uint256 orderId) view returns (uint256 rate, uint256 fee, uint256 lockupDuration, bool active, bool onlyAdmin)',
@@ -81,7 +82,7 @@ class StakingVerificationService {
                     return {
                         id: depositInfo._stakeId,
                         offerId: BigInt(offerId),
-                        principle: parseFloat(hre.ethers.formatUnits(depositInfo._amount, CONSTANTS.WAD_DECIMALS)),
+                        principle: parseFloat(ethers.formatUnits(depositInfo._amount, CONSTANTS.WAD_DECIMALS)),
                         created: new Date(block.timestamp * 1000),
                         owner: depositInfo._address,
                     };

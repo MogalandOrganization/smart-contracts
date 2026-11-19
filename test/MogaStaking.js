@@ -1,10 +1,12 @@
 // cSpell:ignore moga, unstake, unstaked, unstaking
 
-const { expect } = require('chai');
-const hre = require('hardhat');
-const helpers = require('@nomicfoundation/hardhat-network-helpers');
+import { expect } from 'chai';
+import hre from 'hardhat';
+import BN from 'bignumber.js';
+import { anyValue } from '@nomicfoundation/hardhat-ethers-chai-matchers/withArgs';
 
-const BN = require('bignumber.js');
+const { ethers, networkHelpers } = await hre.network.connect();
+
 
 describe('MogaStaking contract', function () {
     // global vars
@@ -41,7 +43,7 @@ describe('MogaStaking contract', function () {
     let smallPrincipal = new BN(100000000);
     let principal = new BN(1000000000000000000);
     let bigPrincipal = new BN(100000000000000000000);
-    let hugePrincipal = hre.ethers.parseEther('1000000');
+    let hugePrincipal = ethers.parseEther('1000000');
 
     let tinyMaturity = new BN(1); // 1 second
     let smallMaturity = new BN(600); // 10 minutes
@@ -53,7 +55,7 @@ describe('MogaStaking contract', function () {
 
     function yearlyRateToRay(rate) {
         // rate = new BN(_rate);
-        ten = new BN(10);
+        const ten = new BN(10);
         return rate
             .times(ten.pow(27))
             .div(new BN(365 * 86400))
@@ -61,7 +63,7 @@ describe('MogaStaking contract', function () {
     }
 
     function accrueInterest(principal, rateRay, age) {
-        ten = new BN(10);
+        const ten = new BN(10);
 
         return rateRay.div(ten.pow(27)).pow(age).times(principal);
     }
@@ -72,9 +74,9 @@ describe('MogaStaking contract', function () {
 
     this.beforeEach(async function () {
         // Get the ContractFactory and Signers here.
-        Token = await hre.ethers.getContractFactory('MogaToken');
-        Staking = await hre.ethers.getContractFactory('MogaStaking');
-        [deployerAcc, mogaAdmin, addr1, addr2, addr3] = await hre.ethers.getSigners();
+        Token = await ethers.getContractFactory('MogaToken');
+        Staking = await ethers.getContractFactory('MogaStaking');
+        [deployerAcc, mogaAdmin, addr1, addr2, addr3] = await ethers.getSigners();
 
         mogaToken = await Token.deploy(mogaAdmin, tokenCap, mogaAdmin);
         await mogaToken.waitForDeployment();
@@ -88,38 +90,38 @@ describe('MogaStaking contract', function () {
 
         // during post-deployment we transfer some amount of staking rewards as initial staking
         // rewards supply
-        await mogaToken.connect(mogaAdmin).transfer(mogaStakingAddress, hre.ethers.parseEther(initialStakingAmount));
+        await mogaToken.connect(mogaAdmin).transfer(mogaStakingAddress, ethers.parseEther(initialStakingAmount));
         const stakingBalance = await mogaToken.balanceOf(mogaStakingAddress);
         //console.log(stakingBalance);
-        expect(Number(hre.ethers.formatEther(stakingBalance))).to.equal(Number(initialStakingAmount));
+        expect(Number(ethers.formatEther(stakingBalance))).to.equal(Number(initialStakingAmount));
         //console.log("total rewards " + (await mogaStaking.totalRewards()));
 
         // set flexibleRewardRate and fee for flexible staking
-        await mogaStaking.connect(mogaAdmin).setFlexibleTermRate(hre.ethers.parseEther(rate.toString()));
+        await mogaStaking.connect(mogaAdmin).setFlexibleTermRate(ethers.parseEther(rate.toString()));
         await mogaStaking.connect(mogaAdmin).setFlexibleTermFee(10);
 
         // user addr1 prep
         // transfer stakeAmount to addr1
-        await mogaToken.connect(mogaAdmin).transfer(addr1.address, hre.ethers.parseEther(stakeAmount));
+        await mogaToken.connect(mogaAdmin).transfer(addr1.address, ethers.parseEther(stakeAmount));
 
         // TBD IF we want admin to create staking on behalf of another user, e.g. through airdrops, then we need to approve the
         // mogaStaking contract an amount that takes care of all future transfers - potentially totalSupply?
-        await mogaToken.connect(mogaAdmin).approve(mogaStakingAddress, hre.ethers.parseEther(initialStakingAmount));
+        await mogaToken.connect(mogaAdmin).approve(mogaStakingAddress, ethers.parseEther(initialStakingAmount));
 
         const addr1Balance = await mogaToken.balanceOf(addr1.address);
-        expect(Number(hre.ethers.formatEther(addr1Balance))).to.equal(Number(stakeAmount));
+        expect(Number(ethers.formatEther(addr1Balance))).to.equal(Number(stakeAmount));
 
         // before a deposit is possible, we need to approve the staking contract
-        await mogaToken.connect(addr1).approve(mogaStakingAddress, hre.ethers.parseEther(stakeAmount));
+        await mogaToken.connect(addr1).approve(mogaStakingAddress, ethers.parseEther(stakeAmount));
 
         // user addr2 and addr3 prep
         // we do not approve moga staking contract to test fail scenarios
-        await mogaToken.connect(mogaAdmin).transfer(addr2.address, hre.ethers.parseEther(stakeAmount));
+        await mogaToken.connect(mogaAdmin).transfer(addr2.address, ethers.parseEther(stakeAmount));
         const addr2Balance = await mogaToken.balanceOf(addr2.address);
-        expect(Number(hre.ethers.formatEther(addr2Balance))).to.equal(Number(stakeAmount));
+        expect(Number(ethers.formatEther(addr2Balance))).to.equal(Number(stakeAmount));
 
         const addr3Balance = await mogaToken.balanceOf(addr3.address);
-        expect(Number(hre.ethers.formatEther(addr3Balance))).to.equal(0);
+        expect(Number(ethers.formatEther(addr3Balance))).to.equal(0);
     });
 
     describe('Deployment', function () {
@@ -132,7 +134,7 @@ describe('MogaStaking contract', function () {
         });
 
         it('should have ' + initialStakingAmount + ' rewards', async function () {
-            let totalRewards = Number(hre.ethers.formatEther(await mogaStaking.totalRewards()));
+            let totalRewards = Number(ethers.formatEther(await mogaStaking.totalRewards()));
             expect(totalRewards).to.eq(Number(initialStakingAmount));
         });
     });
@@ -142,36 +144,36 @@ describe('MogaStaking contract', function () {
             // Check that yearly interest rates are converted to ray correctly.
             // Save and use the bignumber.js objects
 
-            tinyRateRay = await mogaStaking.yearlyRateToRay(hre.ethers.parseEther(tinyRate.toString()));
+            const tinyRateRay = await mogaStaking.yearlyRateToRay(ethers.parseEther(tinyRate.toString()));
             // console.log(tinyRateRay);
             // console.log(yearlyRateToRay(tinyRate));
             expect(tinyRateRay).to.eq(yearlyRateToRay(tinyRate).toFixed(0));
 
-            smallRateRay = await mogaStaking.yearlyRateToRay(hre.ethers.parseEther(smallRate.toString()));
+            const smallRateRay = await mogaStaking.yearlyRateToRay(ethers.parseEther(smallRate.toString()));
             expect(smallRateRay).to.eq(yearlyRateToRay(smallRate).toFixed(0));
 
-            rateRay = await mogaStaking.yearlyRateToRay(hre.ethers.parseEther(rate.toString()));
+            const rateRay = await mogaStaking.yearlyRateToRay(ethers.parseEther(rate.toString()));
             expect(rateRay).to.eq(yearlyRateToRay(rate).toFixed(0));
 
-            bigRateRay = await mogaStaking.yearlyRateToRay(hre.ethers.parseEther(bigRate.toString()));
+            const bigRateRay = await mogaStaking.yearlyRateToRay(ethers.parseEther(bigRate.toString()));
             expect(bigRateRay).to.eq(yearlyRateToRay(bigRate).toFixed(0));
 
-            hugeRateRay = await mogaStaking.yearlyRateToRay(hre.ethers.parseEther(hugeRate.toString()));
+            const hugeRateRay = await mogaStaking.yearlyRateToRay(ethers.parseEther(hugeRate.toString()));
             expect(hugeRateRay).to.eq(yearlyRateToRay(hugeRate).toFixed(0));
         });
 
         it('Check accrueInterest() function', async () => {
             // Save and use the bignumber.js objects for interest rates as rays
-            tinyRateRayBN = yearlyRateToRay(tinyRate).toFixed(0);
-            smallRateRayBN = yearlyRateToRay(smallRate).toFixed(0);
-            rateRayBN = yearlyRateToRay(rate).toFixed(0);
-            bigRateRayBN = yearlyRateToRay(bigRate).toFixed(0);
-            hugeRateRayBN = yearlyRateToRay(hugeRate).toFixed(0);
+            const tinyRateRayBN = yearlyRateToRay(tinyRate).toFixed(0);
+            const smallRateRayBN = yearlyRateToRay(smallRate).toFixed(0);
+            const rateRayBN = yearlyRateToRay(rate).toFixed(0);
+            const bigRateRayBN = yearlyRateToRay(bigRate).toFixed(0);
+            const hugeRateRayBN = yearlyRateToRay(hugeRate).toFixed(0);
 
             // Check principal return values for a combination of different
             // interest rates, principals, and maturity times
 
-            testCases = [
+            const testCases = [
                 { principal: tinyPrincipal, rate: tinyRateRayBN, age: tinyMaturity },
                 { principal: smallPrincipal, rate: smallRateRayBN, age: smallMaturity },
                 { principal: principal, rate: rateRayBN, age: maturity },
@@ -182,18 +184,18 @@ describe('MogaStaking contract', function () {
             ];
 
             for (let i = 0; i < testCases.length; i++) {
-                _principal = testCases[i].principal;
-                _rateRay = testCases[i].rate;
-                _age = testCases[i].age;
+                const _principal = testCases[i].principal;
+                const _rateRay = testCases[i].rate;
+                const _age = testCases[i].age;
 
                 // console.log("age: " + _age);
                 // console.log("principal: " + _principal);
                 // console.log("rateRay: " + _rateRay);
 
-                newPrincipal = await mogaStaking.accrueInterest(_principal.toString(), _rateRay.toString(), _age.toString());
+                const newPrincipal = await mogaStaking.accrueInterest(_principal.toString(), _rateRay.toString(), _age.toString());
                 // console.log(
                 //   "newPrincipal from contract: " +
-                //     hre.ethers.parseEther(newPrincipal.toString())
+                //     ethers.parseEther(newPrincipal.toString())
                 // );
 
                 // console.log(
@@ -212,82 +214,85 @@ describe('MogaStaking contract', function () {
 
     describe('fixedTerm staking transactions', function () {
         it('admin: Should create new stakeOffers', async function () {
-            expect(
+            await expect(
                 await mogaStaking
                     .connect(mogaAdmin)
-                    .createFixedTermOffer(hre.ethers.parseEther(rate.toString()), 10, yearMaturity.toString(), false),
+                    .createFixedTermOffer(ethers.parseEther(rate.toString()), 10, yearMaturity.toString(), false),
             ).to.emit(mogaStaking, 'StakeOfferCreated');
         });
 
         it('admin: Should discontinue stakeOffers', async function () {
-            expect(await mogaStaking.connect(mogaAdmin).discontinueFixedTermOffer(1)).to.emit(mogaStaking, 'StakeOfferDiscontinued');
+            await expect(await mogaStaking.connect(mogaAdmin).discontinueFixedTermOffer(1)).to.emit(mogaStaking, 'StakeOfferDiscontinued');
         });
 
         it('admin: Should create stakeFixedTermForBeneficiary', async function () {
             await mogaStaking
                 .connect(mogaAdmin)
-                .createFixedTermOffer(hre.ethers.parseEther(rate.toString()), 10, yearMaturity.toString(), false);
+                .createFixedTermOffer(ethers.parseEther(rate.toString()), 10, yearMaturity.toString(), false);
 
-            expect(
-                await mogaStaking.connect(mogaAdmin).stakeFixedTermForBeneficiary(1, hre.ethers.parseEther(stakeAmount), addr2.address),
-            ).to.emit(mogaStaking, 'StakeOfferCreated');
+            await expect(
+                await mogaStaking.connect(mogaAdmin).stakeFixedTermForBeneficiary(1, ethers.parseEther(stakeAmount), addr2.address),
+            ).to.emit(mogaStaking, 'FixedTermDeposit');
         });
 
         it('staking should create correct stake struct', async function () {
             //after staking, addr1 balance is zero, stakingContract balance is equal to stakeAmount
             await mogaStaking
                 .connect(mogaAdmin)
-                .createFixedTermOffer(hre.ethers.parseEther(rate.toString()), 10, yearMaturity.toString(), false);
+                .createFixedTermOffer(ethers.parseEther(rate.toString()), 10, yearMaturity.toString(), false);
 
-            await expect(mogaStaking.connect(addr1).stakeFixedTerm(1, hre.ethers.parseEther(stakeAmount))).to.changeTokenBalances(
+            await expect(mogaStaking.connect(addr1).stakeFixedTerm(1, ethers.parseEther(stakeAmount))).to.changeTokenBalances(
+                ethers,
                 mogaToken,
                 [addr1, mogaStaking],
-                [hre.ethers.parseEther(stakeAmount) * -1n, hre.ethers.parseEther(stakeAmount)],
+                [ethers.parseEther(stakeAmount) * -1n, ethers.parseEther(stakeAmount)],
             );
 
             let [stakeOfferId, principle, created, owner] = await mogaStaking.connect(mogaAdmin).getStakeDetails(1);
 
             expect(stakeOfferId == 1);
             expect(principle == stakeAmount);
-            expect(created == (await helpers.time.latest()));
+            expect(created == (await networkHelpers.time.latest()));
             expect(owner == addr1.address);
 
-            expect(await mogaStaking.totalStaked()).to.eq(hre.ethers.parseEther(stakeAmount));
+            expect(await mogaStaking.totalStaked()).to.eq(ethers.parseEther(stakeAmount));
         });
 
         it('staking should create two correct stake structs', async function () {
             //after staking, addr1 balance is zero, stakingContract balance is equal to stakeAmount
             await mogaStaking
                 .connect(mogaAdmin)
-                .createFixedTermOffer(hre.ethers.parseEther(rate.toString()), 10, yearMaturity.toString(), false);
+                .createFixedTermOffer(ethers.parseEther(rate.toString()), 10, yearMaturity.toString(), false);
 
             const halfStakeAmount = (parseInt(stakeAmount, 10) / 2).toString();
 
-            const tx1 = mogaStaking.connect(addr1).stakeFixedTerm(1, hre.ethers.parseEther(halfStakeAmount));
+            const tx1 = mogaStaking.connect(addr1).stakeFixedTerm(1, ethers.parseEther(halfStakeAmount));
             await expect(tx1).to.changeTokenBalances(
+                ethers,
                 mogaToken,
                 [addr1, mogaStaking],
-                [hre.ethers.parseEther(halfStakeAmount) * -1n, hre.ethers.parseEther(halfStakeAmount)],
+                [ethers.parseEther(halfStakeAmount) * -1n, ethers.parseEther(halfStakeAmount)],
             );
-            await expect(tx1).to.emit(mogaStaking, 'FixedTermDeposit').withArgs(addr1.address, hre.ethers.parseEther(halfStakeAmount), 1);
+            await expect(tx1).to.emit(mogaStaking, 'FixedTermDeposit').withArgs(addr1.address, ethers.parseEther(halfStakeAmount), 1, 1, anyValue);
 
             let [stakeOfferId, principle, created, owner] = await mogaStaking.connect(mogaAdmin).getStakeDetails(1);
 
             expect(stakeOfferId == 1);
             expect(principle == halfStakeAmount);
-            expect(created == (await helpers.time.latest()));
+            expect(created == (await networkHelpers.time.latest()));
             expect(owner == addr1.address);
 
             // before a deposit is possible, let addr2 approve the staking contract spending capacity
-            await mogaToken.connect(addr2).approve(mogaStakingAddress, hre.ethers.parseEther(stakeAmount));
+            await mogaToken.connect(addr2).approve(mogaStakingAddress, ethers.parseEther(stakeAmount));
 
-            const tx2 = mogaStaking.connect(addr2).stakeFixedTerm(1, hre.ethers.parseEther(halfStakeAmount));
+            const tx2 = mogaStaking.connect(addr2).stakeFixedTerm(1, ethers.parseEther(halfStakeAmount));
             await expect(tx2).to.changeTokenBalances(
+                ethers,
                 mogaToken,
                 [addr2, mogaStaking],
-                [hre.ethers.parseEther(halfStakeAmount) * -1n, hre.ethers.parseEther(halfStakeAmount)],
+                [ethers.parseEther(halfStakeAmount) * -1n, ethers.parseEther(halfStakeAmount)],
             );
-            await expect(tx2).to.emit(mogaStaking, 'FixedTermDeposit').withArgs(addr2.address, hre.ethers.parseEther(halfStakeAmount), 2);
+            await expect(tx2).to.emit(mogaStaking, 'FixedTermDeposit').withArgs(addr2.address, ethers.parseEther(halfStakeAmount), 1, 2, anyValue);
 
             let details = await mogaStaking.connect(mogaAdmin).getStakeDetails(2);
             stakeOfferId = details[0];
@@ -297,46 +302,47 @@ describe('MogaStaking contract', function () {
 
             expect(stakeOfferId == 1);
             expect(principle == halfStakeAmount);
-            expect(created == (await helpers.time.latest()));
+            expect(created == (await networkHelpers.time.latest()));
             expect(owner == addr2.address);
 
-            expect(await mogaStaking.totalStaked()).to.eq(hre.ethers.parseEther(stakeAmount));
+            expect(await mogaStaking.totalStaked()).to.eq(ethers.parseEther(stakeAmount));
         });
 
         it('fixed term staking can be unstaked after lockup time, anytime', async function () {
             //after staking, addr1 balance is zero, stakingContract balance is equal to stakeAmount
             await mogaStaking
                 .connect(mogaAdmin)
-                .createFixedTermOffer(hre.ethers.parseEther(rate.toString()), 10, yearMaturity.toString(), false);
+                .createFixedTermOffer(ethers.parseEther(rate.toString()), 10, yearMaturity.toString(), false);
 
             // console.log(await mogaStaking.stakeOffers(1));
 
             // console.log(
             //   "addr1 balance start: " +
-            //     hre.ethers.formatEther(await mogaToken.balanceOf(addr1))
+            //     ethers.formatEther(await mogaToken.balanceOf(addr1))
             // );
 
-            await expect(mogaStaking.connect(addr1).stakeFixedTerm(1, hre.ethers.parseEther(stakeAmount))).to.changeTokenBalances(
+            await expect(mogaStaking.connect(addr1).stakeFixedTerm(1, ethers.parseEther(stakeAmount))).to.changeTokenBalances(
+                ethers,
                 mogaToken,
                 [addr1, mogaStaking],
-                [hre.ethers.parseEther(stakeAmount) * -1n, hre.ethers.parseEther(stakeAmount)],
+                [ethers.parseEther(stakeAmount) * -1n, ethers.parseEther(stakeAmount)],
             );
 
             //console.log(await mogaStaking.getStakeDetails(1));
 
             // console.log(
             //   "addr1 balance before: " +
-            //     hre.ethers.formatEther(await mogaToken.balanceOf(addr1))
+            //     ethers.formatEther(await mogaToken.balanceOf(addr1))
             // );
 
-            await helpers.time.increase(yearMaturity);
+            await networkHelpers.time.increase(yearMaturity.toNumber());
 
             //console.log("claimable balance: " + (await mogaStaking.rewards(1)));
 
             await mogaStaking.connect(addr1).unStakeFixedTerm(1);
             // console.log(
             //   "addr1 balance after: " +
-            //     hre.ethers.formatEther(await mogaToken.balanceOf(addr1))
+            //     ethers.formatEther(await mogaToken.balanceOf(addr1))
             // );
         });
 
@@ -347,27 +353,28 @@ describe('MogaStaking contract', function () {
             // Create stake offer with short lockup duration
             await mogaStaking
                 .connect(mogaAdmin)
-                .createFixedTermOffer(hre.ethers.parseEther(rate.toString()), 10, twoHourMaturity.toString(), false);
+                .createFixedTermOffer(ethers.parseEther(rate.toString()), 10, twoHourMaturity.toString(), false);
 
             // Stake tokens
-            await expect(mogaStaking.connect(addr1).stakeFixedTerm(1, hre.ethers.parseEther(stakeAmount))).to.changeTokenBalances(
+            await expect(mogaStaking.connect(addr1).stakeFixedTerm(1, ethers.parseEther(stakeAmount))).to.changeTokenBalances(
+                ethers,
                 mogaToken,
                 [addr1, mogaStaking],
-                [hre.ethers.parseEther(stakeAmount) * -1n, hre.ethers.parseEther(stakeAmount)],
+                [ethers.parseEther(stakeAmount) * -1n, ethers.parseEther(stakeAmount)],
             );
 
             // Check stake details to confirm stake was created properly
             let [stakeOfferId, principle, created, owner] = await mogaStaking.connect(mogaAdmin).getStakeDetails(1);
             expect(stakeOfferId).to.equal(1);
-            expect(principle).to.equal(hre.ethers.parseEther(stakeAmount));
+            expect(principle).to.equal(ethers.parseEther(stakeAmount));
             expect(owner).to.equal(addr1.address);
 
             // Advance time just past the lockup period
-            await helpers.time.increase(twoHourMaturity + 1);
+            await networkHelpers.time.increase(twoHourMaturity + 1);
 
             // Log reward amount before unstaking to check calculated interest
             const rewardAmount = await mogaStaking.getFixedTermRewards(1);
-            console.log('Reward amount after short period:', hre.ethers.formatEther(rewardAmount));
+            console.log('Reward amount after short period:', ethers.formatEther(rewardAmount));
 
             // Record token balance before unstaking
             const beforeBalance = await mogaToken.balanceOf(addr1.address);
@@ -378,7 +385,7 @@ describe('MogaStaking contract', function () {
             // Record token balance after unstaking and calculate difference
             const afterBalance = await mogaToken.balanceOf(addr1.address);
             const returnedAmount = afterBalance - beforeBalance;
-            console.log('Returned amount after unstaking:', hre.ethers.formatEther(returnedAmount));
+            console.log('Returned amount after unstaking:', ethers.formatEther(returnedAmount));
 
             // Verify stake is gone from contract
             const afterUnstake = await mogaStaking.connect(mogaAdmin).getStakeDetails(1);
@@ -396,27 +403,27 @@ describe('MogaStaking contract', function () {
             // Create stake offer with high rate and very short lockup
             await mogaStaking
                 .connect(mogaAdmin)
-                .createFixedTermOffer(hre.ethers.parseEther(highRate.toString()), 10, shortPeriod.toString(), false);
+                .createFixedTermOffer(ethers.parseEther(highRate.toString()), 10, shortPeriod.toString(), false);
 
             // Stake tokens - need to use ID 1 since that's the ID of the offer we just created
-            await mogaStaking.connect(addr1).stakeFixedTerm(1, hre.ethers.parseEther(stakeAmount));
+            await mogaStaking.connect(addr1).stakeFixedTerm(1, ethers.parseEther(stakeAmount));
 
             // Advance time just past the lockup period
-            await helpers.time.increase(shortPeriod + 1);
+            await networkHelpers.time.increase(shortPeriod + 1);
 
             // Get reward amount
-            const initialStake = hre.ethers.parseEther(stakeAmount);
+            const initialStake = ethers.parseEther(stakeAmount);
             const rewardBefore = await mogaStaking.getFixedTermRewards(1);
-            console.log('Initial stake amount:', hre.ethers.formatEther(initialStake));
-            console.log('Total reward amount (with interest):', hre.ethers.formatEther(rewardBefore));
+            console.log('Initial stake amount:', ethers.formatEther(initialStake));
+            console.log('Total reward amount (with interest):', ethers.formatEther(rewardBefore));
 
             // Calculate expected interest and fee manually
             const interest = rewardBefore - initialStake;
-            console.log('Interest earned:', hre.ethers.formatEther(interest));
+            console.log('Interest earned:', ethers.formatEther(interest));
 
             // Get total supply before unstaking
             const totalSupplyBefore = await mogaToken.totalSupply();
-            console.log('Total token supply before unstaking:', hre.ethers.formatEther(totalSupplyBefore));
+            console.log('Total token supply before unstaking:', ethers.formatEther(totalSupplyBefore));
 
             // Get user balance before unstaking
             const balanceBefore = await mogaToken.balanceOf(addr1.address);
@@ -427,13 +434,13 @@ describe('MogaStaking contract', function () {
             // Get user balance after unstaking
             const balanceAfter = await mogaToken.balanceOf(addr1.address);
             const amountReceived = balanceAfter - balanceBefore;
-            console.log('Amount received after unstaking:', hre.ethers.formatEther(amountReceived));
+            console.log('Amount received after unstaking:', ethers.formatEther(amountReceived));
 
             // Get total supply after unstaking to check burn amount
             const totalSupplyAfter = await mogaToken.totalSupply();
-            console.log('Total token supply after unstaking:', hre.ethers.formatEther(totalSupplyAfter));
+            console.log('Total token supply after unstaking:', ethers.formatEther(totalSupplyAfter));
             const burnAmount = totalSupplyBefore - totalSupplyAfter;
-            console.log('Amount burned during unstaking:', hre.ethers.formatEther(burnAmount));
+            console.log('Amount burned during unstaking:', ethers.formatEther(burnAmount));
 
             // Verify fee calculation logic
             if (interest > 0) {
@@ -443,8 +450,8 @@ describe('MogaStaking contract', function () {
                 const expectedFeeAmount = (interest * 10n) / 100n;
                 const expectedBurnAmount = expectedFeeAmount / 2n;
 
-                console.log('Expected fee amount:', hre.ethers.formatEther(expectedFeeAmount));
-                console.log('Expected burn amount:', hre.ethers.formatEther(expectedBurnAmount));
+                console.log('Expected fee amount:', ethers.formatEther(expectedFeeAmount));
+                console.log('Expected burn amount:', ethers.formatEther(expectedBurnAmount));
 
                 // Check if burn amount matches expected
                 expect(burnAmount).to.be.closeTo(expectedBurnAmount, 1000000n); // Allow small precision error
@@ -460,27 +467,27 @@ describe('MogaStaking contract', function () {
         it('beneficiaries can unstake after lockup period', async function () {
             await mogaStaking
                 .connect(mogaAdmin)
-                .createFixedTermOffer(hre.ethers.parseEther(rate.toString()), 10, yearMaturity.toString(), false);
+                .createFixedTermOffer(ethers.parseEther(rate.toString()), 10, yearMaturity.toString(), false);
 
-            await mogaStaking.connect(mogaAdmin).stakeFixedTermForBeneficiary(1, hre.ethers.parseEther(stakeAmount), addr2.address);
+            await mogaStaking.connect(mogaAdmin).stakeFixedTermForBeneficiary(1, ethers.parseEther(stakeAmount), addr2.address);
 
-            await helpers.time.increase(yearMaturity);
+            await networkHelpers.time.increase(yearMaturity.toNumber());
 
-            expect(await mogaStaking.connect(addr2).unStakeFixedTerm(1)).to.emit(mogaStaking, 'Withdraw');
+            await expect(await mogaStaking.connect(addr2).unStakeFixedTerm(1)).to.emit(mogaStaking, 'FixedTermWithdraw');
         });
 
         it('should increase totalInterest by to be committed rewards', async function () {
             await mogaStaking
                 .connect(mogaAdmin)
-                .createFixedTermOffer(hre.ethers.parseEther(rate.toString()), 10, yearMaturity.toString(), false);
+                .createFixedTermOffer(ethers.parseEther(rate.toString()), 10, yearMaturity.toString(), false);
 
-            await mogaStaking.connect(addr1).stakeFixedTerm(1, hre.ethers.parseEther(stakeAmount));
+            await mogaStaking.connect(addr1).stakeFixedTerm(1, ethers.parseEther(stakeAmount));
 
             // console.log(
             //   "totalInterest after stake: " + (await mogaStaking.totalInterest())
             // );
 
-            await helpers.time.increase(yearMaturity);
+            await networkHelpers.time.increase(yearMaturity.toNumber());
 
             await mogaStaking.connect(addr1).unStakeFixedTerm(1);
 
@@ -492,15 +499,15 @@ describe('MogaStaking contract', function () {
 
         describe('validations', function () {
             it('should revert if staking offer does not exist', async function () {
-                await expect(mogaStaking.connect(addr2).stakeFixedTerm(99, stakeAmount)).to.be.reverted;
+                await expect(mogaStaking.connect(addr2).stakeFixedTerm(99, stakeAmount)).to.revert(ethers);
             });
 
             it('should revert if staking offer is only accessible by admin', async function () {
                 await mogaStaking
                     .connect(mogaAdmin)
-                    .createFixedTermOffer(hre.ethers.parseEther(rate.toString()), 10, yearMaturity.toString(), true);
+                    .createFixedTermOffer(ethers.parseEther(rate.toString()), 10, yearMaturity.toString(), true);
 
-                await expect(mogaStaking.connect(addr2).stakeFixedTerm(2, stakeAmount)).to.be.reverted;
+                await expect(mogaStaking.connect(addr2).stakeFixedTerm(2, stakeAmount)).to.revert(ethers);
 
                 // add admin stake test
             });
@@ -508,55 +515,56 @@ describe('MogaStaking contract', function () {
             it('should revert if staking offer no longer active', async function () {
                 await mogaStaking
                     .connect(mogaAdmin)
-                    .createFixedTermOffer(hre.ethers.parseEther(rate.toString()), 10, yearMaturity.toString(), false);
+                    .createFixedTermOffer(ethers.parseEther(rate.toString()), 10, yearMaturity.toString(), false);
                 await mogaStaking.connect(mogaAdmin).discontinueFixedTermOffer(1);
 
-                await expect(mogaStaking.connect(addr1).stakeFixedTerm(1, stakeAmount)).to.be.reverted;
+                await expect(mogaStaking.connect(addr1).stakeFixedTerm(1, stakeAmount)).to.revert(ethers);
             });
 
             it('should revert if unstaking is attempted by other than stake Owner', async function () {
                 await mogaStaking
                     .connect(mogaAdmin)
-                    .createFixedTermOffer(hre.ethers.parseEther(rate.toString()), 10, yearMaturity.toString(), false);
+                    .createFixedTermOffer(ethers.parseEther(rate.toString()), 10, yearMaturity.toString(), false);
 
                 mogaStaking.connect(addr1).stakeFixedTerm(1, stakeAmount);
 
-                await helpers.time.increase(yearMaturity);
+                await networkHelpers.time.increase(yearMaturity.toNumber());
 
-                await expect(mogaStaking.connect(addr2).unStakeFixedTerm(1)).to.be.reverted;
+                await expect(mogaStaking.connect(addr2).unStakeFixedTerm(1)).to.revert(ethers);
             });
 
             it('should revert if unStakeFixedTerm is attempted prior to lockup period', async function () {
                 //after staking, addr1 balance is zero, stakingContract balance is equal to stakeAmount
                 await mogaStaking
                     .connect(mogaAdmin)
-                    .createFixedTermOffer(hre.ethers.parseEther(rate.toString()), 10, yearMaturity.toString(), false);
+                    .createFixedTermOffer(ethers.parseEther(rate.toString()), 10, yearMaturity.toString(), false);
 
                 await expect(mogaStaking.connect(addr1).stakeFixedTerm(1, stakeAmount)).to.changeTokenBalances(
+                ethers,
                     mogaToken,
                     [addr1, mogaStaking],
                     [stakeAmount * -1, stakeAmount],
                 );
 
-                await expect(mogaStaking.connect(addr1).unStakeFixedTerm(1)).to.be.reverted;
+                await expect(mogaStaking.connect(addr1).unStakeFixedTerm(1)).to.revert(ethers);
             });
 
             it('should revert if staking address not approved', async function () {
                 await mogaStaking
                     .connect(mogaAdmin)
-                    .createFixedTermOffer(hre.ethers.parseEther(rate.toString()), 10, yearMaturity.toString(), false);
+                    .createFixedTermOffer(ethers.parseEther(rate.toString()), 10, yearMaturity.toString(), false);
 
-                await expect(mogaStaking.connect(addr2).stakeFixedTerm(1, stakeAmount)).to.be.reverted;
+                await expect(mogaStaking.connect(addr2).stakeFixedTerm(1, stakeAmount)).to.revert(ethers);
             });
 
             it('should revert if address has insufficient balance', async function () {
                 await mogaStaking
                     .connect(mogaAdmin)
-                    .createFixedTermOffer(hre.ethers.parseEther(rate.toString()), 10, yearMaturity.toString(), false);
+                    .createFixedTermOffer(ethers.parseEther(rate.toString()), 10, yearMaturity.toString(), false);
 
                 const totalSupply = await mogaToken.totalSupply();
                 await mogaToken.connect(addr2).approve(mogaStakingAddress, totalSupply);
-                await expect(mogaStaking.connect(addr2).stakeFixedTerm(1, totalSupply)).to.be.reverted;
+                await expect(mogaStaking.connect(addr2).stakeFixedTerm(1, totalSupply)).to.revert(ethers);
             });
         });
 
@@ -565,7 +573,7 @@ describe('MogaStaking contract', function () {
                 await expect(
                     mogaStaking
                         .connect(mogaAdmin)
-                        .createFixedTermOffer(hre.ethers.parseEther(rate.toString()), 10, yearMaturity.toString(), false),
+                        .createFixedTermOffer(ethers.parseEther(rate.toString()), 10, yearMaturity.toString(), false),
                 )
                     .to.emit(mogaStaking, 'StakeOfferCreated')
                     .withArgs(1);
@@ -574,7 +582,7 @@ describe('MogaStaking contract', function () {
             it('should emit StakeOfferDiscontinued event', async function () {
                 await mogaStaking
                     .connect(mogaAdmin)
-                    .createFixedTermOffer(hre.ethers.parseEther(rate.toString()), 10, yearMaturity.toString(), false);
+                    .createFixedTermOffer(ethers.parseEther(rate.toString()), 10, yearMaturity.toString(), false);
                 await expect(mogaStaking.connect(mogaAdmin).discontinueFixedTermOffer(1))
                     .to.emit(mogaStaking, 'StakeOfferDiscontinued')
                     .withArgs(1);
@@ -583,21 +591,21 @@ describe('MogaStaking contract', function () {
             it('should emit Deposit event', async function () {
                 await mogaStaking
                     .connect(mogaAdmin)
-                    .createFixedTermOffer(hre.ethers.parseEther(rate.toString()), 10, yearMaturity.toString(), false);
+                    .createFixedTermOffer(ethers.parseEther(rate.toString()), 10, yearMaturity.toString(), false);
 
                 await expect(mogaStaking.connect(addr1).stakeFixedTerm(1, stakeAmount))
                     .to.emit(mogaStaking, 'FixedTermDeposit')
-                    .withArgs(addr1.address, stakeAmount, 1);
+                    .withArgs(addr1.address, stakeAmount, 1, 1, anyValue);
             });
 
             it('should emit Withdraw event', async function () {
                 await mogaStaking
                     .connect(mogaAdmin)
-                    .createFixedTermOffer(hre.ethers.parseEther(rate.toString()), 10, yearMaturity.toString(), false);
+                    .createFixedTermOffer(ethers.parseEther(rate.toString()), 10, yearMaturity.toString(), false);
 
                 await mogaStaking.connect(addr1).stakeFixedTerm(1, stakeAmount);
 
-                await helpers.time.increase(yearMaturity);
+                await networkHelpers.time.increase(yearMaturity.toNumber());
 
                 await expect(mogaStaking.connect(addr1).unStakeFixedTerm(1)).to.emit(mogaStaking, 'FixedTermWithdraw');
             });
@@ -605,20 +613,21 @@ describe('MogaStaking contract', function () {
 
         describe('flexible stake transactions', function () {
             it('should deposit amount in flexible stake', async function () {
-                await expect(mogaStaking.connect(addr1).stakeFlexibleTerm(hre.ethers.parseEther(stakeAmount))).to.changeTokenBalances(
+                await expect(mogaStaking.connect(addr1).stakeFlexibleTerm(ethers.parseEther(stakeAmount))).to.changeTokenBalances(
+                ethers,
                     mogaToken,
                     [addr1, mogaStaking],
-                    [hre.ethers.parseEther(stakeAmount) * -1n, hre.ethers.parseEther(stakeAmount)],
+                    [ethers.parseEther(stakeAmount) * -1n, ethers.parseEther(stakeAmount)],
                 );
             });
 
             it('Should have a flexibleTermBalances(address) equal to amount deposited', async function () {
-                await mogaStaking.connect(addr1).stakeFlexibleTerm(hre.ethers.parseEther(stakeAmount));
-                expect(await mogaStaking.flexibleTermBalances(addr1.address)).to.eq(hre.ethers.parseEther(stakeAmount));
+                await mogaStaking.connect(addr1).stakeFlexibleTerm(ethers.parseEther(stakeAmount));
+                expect(await mogaStaking.flexibleTermBalances(addr1.address)).to.eq(ethers.parseEther(stakeAmount));
             });
 
             it('Should initialize userRewardIndex when staking for the first time', async function () {
-                await mogaStaking.connect(addr1).stakeFlexibleTerm(hre.ethers.parseEther(stakeAmount));
+                await mogaStaking.connect(addr1).stakeFlexibleTerm(ethers.parseEther(stakeAmount));
                 expect(await mogaStaking.userRewardIndex(addr1.address)).to.eq(await mogaStaking.globalRewardIndex());
             });
 
@@ -626,13 +635,13 @@ describe('MogaStaking contract', function () {
                 const initialIndex = await mogaStaking.globalRewardIndex();
 
                 // Stake to ensure the system is active
-                await mogaStaking.connect(addr1).stakeFlexibleTerm(hre.ethers.parseEther(stakeAmount));
+                await mogaStaking.connect(addr1).stakeFlexibleTerm(ethers.parseEther(stakeAmount));
 
                 // Advance time
-                await helpers.time.increase(yearMaturity);
+                await networkHelpers.time.increase(yearMaturity.toNumber());
 
                 // Trigger an update by interacting with the contract
-                await mogaStaking.connect(mogaAdmin).setFlexibleTermRate(hre.ethers.parseEther(rate.toString()));
+                await mogaStaking.connect(mogaAdmin).setFlexibleTermRate(ethers.parseEther(rate.toString()));
 
                 // Check if the index increased
                 const newIndex = await mogaStaking.globalRewardIndex();
@@ -640,44 +649,44 @@ describe('MogaStaking contract', function () {
             });
 
             it('Should not change the total reward balance', async function () {
-                await mogaStaking.connect(addr1).stakeFlexibleTerm(hre.ethers.parseEther(stakeAmount));
+                await mogaStaking.connect(addr1).stakeFlexibleTerm(ethers.parseEther(stakeAmount));
                 const rewardBalance = await mogaStaking.totalRewards();
 
-                expect(Number(hre.ethers.formatEther(rewardBalance))).to.equal(Number(initialStakingAmount));
+                expect(Number(ethers.formatEther(rewardBalance))).to.equal(Number(initialStakingAmount));
             });
 
             it('Should not change the total interest', async function () {
                 // flexible staking total interest cannot be pre-calculated as flexible staking runs forever so it will stay zero
-                await mogaStaking.connect(addr1).stakeFlexibleTerm(hre.ethers.parseEther(stakeAmount));
+                await mogaStaking.connect(addr1).stakeFlexibleTerm(ethers.parseEther(stakeAmount));
                 const totalInterest = await mogaStaking.totalInterest();
 
-                expect(Number(hre.ethers.formatEther(totalInterest))).to.equal(0);
+                expect(Number(ethers.formatEther(totalInterest))).to.equal(0);
             });
 
             describe('validations', function () {
                 it('should revert if staking address not approved', async function () {
-                    await expect(mogaStaking.connect(addr2).stakeFlexibleTerm(stakeAmount)).to.be.reverted;
+                    await expect(mogaStaking.connect(addr2).stakeFlexibleTerm(stakeAmount)).to.revert(ethers);
                 });
 
                 it('should revert if address has insufficient balance', async function () {
                     const totalSupply = await mogaToken.totalSupply();
                     await mogaToken.connect(addr2).approve(mogaStakingAddress, totalSupply);
-                    await expect(mogaStaking.connect(addr2).stakeFlexibleTerm(totalSupply)).to.be.reverted;
+                    await expect(mogaStaking.connect(addr2).stakeFlexibleTerm(totalSupply)).to.revert(ethers);
                 });
             });
 
             describe('events', function () {
                 it('should emit DepositFlexible event', async function () {
-                    await expect(mogaStaking.connect(addr1).stakeFlexibleTerm(hre.ethers.parseEther(stakeAmount)))
+                    await expect(mogaStaking.connect(addr1).stakeFlexibleTerm(ethers.parseEther(stakeAmount)))
                         .to.emit(mogaStaking, 'FlexibleTermDeposit')
-                        .withArgs(addr1.address, hre.ethers.parseEther(stakeAmount));
+                        .withArgs(addr1.address, ethers.parseEther(stakeAmount), anyValue);
                 });
 
                 it('should emit RewardIndexUpdated event when rate changes', async function () {
-                    await mogaStaking.connect(addr1).stakeFlexibleTerm(hre.ethers.parseEther(stakeAmount));
-                    await helpers.time.increase(yearMaturity);
+                    await mogaStaking.connect(addr1).stakeFlexibleTerm(ethers.parseEther(stakeAmount));
+                    await networkHelpers.time.increase(yearMaturity.toNumber());
 
-                    await expect(mogaStaking.connect(mogaAdmin).setFlexibleTermRate(hre.ethers.parseEther(smallRate.toString()))).to.emit(
+                    await expect(mogaStaking.connect(mogaAdmin).setFlexibleTermRate(ethers.parseEther(smallRate.toString()))).to.emit(
                         mogaStaking,
                         'RewardIndexUpdated',
                     );
@@ -687,21 +696,21 @@ describe('MogaStaking contract', function () {
 
         describe('flexible Compound', function () {
             this.beforeEach(async function () {
-                await mogaStaking.connect(addr1).stakeFlexibleTerm(hre.ethers.parseEther(stakeAmount));
-                await helpers.time.increase(yearMaturity);
+                await mogaStaking.connect(addr1).stakeFlexibleTerm(ethers.parseEther(stakeAmount));
+                await networkHelpers.time.increase(yearMaturity.toNumber());
             });
 
             it('Should increment balanceOf(address) when compounding', async function () {
                 const initialBalance = await mogaStaking.flexibleTermBalances(addr1.address);
                 const initialRewards = await mogaStaking.getFlexibleTermRewards(addr1.address);
 
-                console.log(`Initial balance: ${hre.ethers.formatEther(initialBalance)}`);
-                console.log(`Initial rewards: ${hre.ethers.formatEther(initialRewards)}`);
+                console.log(`Initial balance: ${ethers.formatEther(initialBalance)}`);
+                console.log(`Initial rewards: ${ethers.formatEther(initialRewards)}`);
 
                 await mogaStaking.connect(addr1).compoundFlexibleTerm(addr1.address);
                 const newBalance = await mogaStaking.flexibleTermBalances(addr1.address);
 
-                console.log(`New balance after compound: ${hre.ethers.formatEther(newBalance)}`);
+                console.log(`New balance after compound: ${ethers.formatEther(newBalance)}`);
 
                 // New balance should be greater than initial balance
                 expect(newBalance).to.be.gt(initialBalance);
@@ -732,10 +741,10 @@ describe('MogaStaking contract', function () {
                 await mogaStaking.connect(addr1).compoundFlexibleTerm(addr1.address);
 
                 // Advance time to generate more rewards
-                await helpers.time.increase(yearMaturity / 4); // Add 3 more months
+                await networkHelpers.time.increase(yearMaturity / 4); // Add 3 more months
 
                 // Trigger an update for the user which will update flexibleTermUnclaimedRewards
-                await mogaStaking.connect(mogaAdmin).setFlexibleTermRate(hre.ethers.parseEther(rate.toString()));
+                await mogaStaking.connect(mogaAdmin).setFlexibleTermRate(ethers.parseEther(rate.toString()));
 
                 // Compound again to move rewards to principal
                 await mogaStaking.connect(addr1).compoundFlexibleTerm(addr1.address);
@@ -748,10 +757,10 @@ describe('MogaStaking contract', function () {
                 const initialIndex = await mogaStaking.userRewardIndex(addr1.address);
 
                 // Advance time to ensure index will update
-                await helpers.time.increase(yearMaturity / 4);
+                await networkHelpers.time.increase(yearMaturity / 4);
 
                 // Trigger a global index update
-                await mogaStaking.connect(mogaAdmin).setFlexibleTermRate(hre.ethers.parseEther(rate.toString()));
+                await mogaStaking.connect(mogaAdmin).setFlexibleTermRate(ethers.parseEther(rate.toString()));
                 const globalIndex = await mogaStaking.globalRewardIndex();
 
                 // Compound which should update the user's index
@@ -780,8 +789,8 @@ describe('MogaStaking contract', function () {
 
         describe('Withdraw flexible stake', async function () {
             beforeEach(async function () {
-                await mogaStaking.connect(addr1).stakeFlexibleTerm(hre.ethers.parseEther(stakeAmount));
-                await helpers.time.increase(yearMaturity);
+                await mogaStaking.connect(addr1).stakeFlexibleTerm(ethers.parseEther(stakeAmount));
+                await networkHelpers.time.increase(yearMaturity.toNumber());
             });
 
             it('Should transfer correct tokens when withdrawing', async function () {
@@ -797,8 +806,8 @@ describe('MogaStaking contract', function () {
                 const finalContractBalance = await mogaToken.balanceOf(mogaStakingAddress);
 
                 const userGain = finalUserBalance - initialUserBalance;
-                console.log(`User balance change: ${hre.ethers.formatEther(userGain)}`);
-                console.log(`Contract balance change: ${hre.ethers.formatEther(finalContractBalance - initialContractBalance)}`);
+                console.log(`User balance change: ${ethers.formatEther(userGain)}`);
+                console.log(`Contract balance change: ${ethers.formatEther(finalContractBalance - initialContractBalance)}`);
 
                 // User should have received at least their stake back, and some interest
                 expect(userGain).to.be.gt(initialStake);
@@ -816,7 +825,7 @@ describe('MogaStaking contract', function () {
 
             it('Should set flexibleTermUnclaimedRewards to zero', async function () {
                 // First update rewards but don't withdraw
-                await mogaStaking.connect(mogaAdmin).setFlexibleTermRate(hre.ethers.parseEther(rate.toString()));
+                await mogaStaking.connect(mogaAdmin).setFlexibleTermRate(ethers.parseEther(rate.toString()));
 
                 // Now withdraw
                 await mogaStaking.connect(addr1).unStakeFlexibleTerm();
@@ -869,24 +878,24 @@ describe('MogaStaking contract', function () {
       await mogaStaking.connect(addr1).stakeFixedTerm(stakeAmount);
     });
     it("should have 100 rewards after one hour", async function () {
-      await helpers.time.increase(60 * 60);
+      await networkHelpers.time.increase(60 * 60);
       console.log("balance: " + (await mogaStaking.balanceOf(addr1.address)));
       console.log("rewards: " + (await mogaStaking.rewards(addr1.address)));
       expect(await mogaStaking.rewards(addr1.address)).to.eq(
-        //hre.ethers.parseEther("100")
+        //ethers.parseEther("100")
         100 ///////// WHY IS IT RETURNING WRONG FORMAT???
       );
     });
     it("should have 1/36 rewards after one second", async function () {
-      await helpers.time.increase(1);
+      await networkHelpers.time.increase(1);
       expect(await mogaStaking.rewards(addr1.address)).to.eq(
         stakeAmount / 1000 / 3600
       );
     });
     it("should have 1 reward after 36 seconds", async function () {
-      await helpers.time.increase(36);
+      await networkHelpers.time.increase(36);
       expect(await mogaStaking.rewards(addr1.address)).to.eq(
-        hre.ethers.parseEther("1")
+        ethers.parseEther("1")
       );
     });
   });

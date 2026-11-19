@@ -1,81 +1,98 @@
 // cSpell:ignore educhain, opencampus, moga, basescan
 
-require('@nomicfoundation/hardhat-toolbox');
-require('dotenv').config({ quiet: true });
+import { defineConfig, configVariable } from 'hardhat/config';
+import hardhatToolboxMochaEthers from '@nomicfoundation/hardhat-toolbox-mocha-ethers';
+import dotenv from 'dotenv';
 
-/** @type import('hardhat/config').HardhatUserConfig */
-module.exports = {
-    solidity: '0.8.24',
+// Populates process.env from .env so that configVariable('...') can resolve the secrets.
+dotenv.config({ quiet: true });
+
+export default defineConfig({
+    plugins: [hardhatToolboxMochaEthers],
+    // OpenZeppelin 5.6.1 pragmas go up to ^0.8.26; contracts use ^0.8.0 / ^0.8.20.
+    solidity: {
+        profiles: {
+            default: { version: '0.8.28' },
+            production: { version: '0.8.28' },
+        },
+    },
     networks: {
         // EDUCHAIN / OPENCAMPUS TESTNET
         opencampus: {
+            type: 'http',
             url: 'https://rpc.open-campus-codex.gelato.digital/',
-            accounts: [process.env.PRIVATE_KEY],
+            accounts: [configVariable('PRIVATE_KEY')],
             chainId: 656476, //'0xa045c', // 656476
             gasPrice: 1000000000,
         },
         // EDUCHAIN / OPENCAMPUS MAINNET
         'edu-chain': {
+            type: 'http',
             url: 'https://rpc.edu-chain.raas.gelato.cloud',
-            accounts: [process.env.PRIVATE_KEY],
+            accounts: [configVariable('PRIVATE_KEY')],
             chainId: 41923, // '0xa3c3', // 41923
             gasPrice: 1000000000,
         },
         // for base mainnet
         base_mainnet: {
+            type: 'http',
             url: 'https://mainnet.base.org',
-            accounts: [process.env.PRIVATE_KEY],
+            accounts: [configVariable('PRIVATE_KEY')],
             gasPrice: 1000000000,
         },
         // for testnet
         base_sepolia: {
+            type: 'http',
             url: 'https://sepolia.base.org',
-            accounts: [process.env.PRIVATE_KEY],
+            accounts: [configVariable('PRIVATE_KEY')],
             gasPrice: 1000000000,
-            verify: {
-                etherscan: {
-                    apiUrl: 'https://api-sepolia.basescan.org/api',
-                    apiKey: process.env.ETHERSCAN_API_KEY,
-                },
-            },
         },
         // for local dev environment
         base_local: {
+            type: 'http',
             url: 'http://localhost:8545',
-            accounts: [process.env.PRIVATE_KEY],
+            accounts: [configVariable('PRIVATE_KEY')],
             gasPrice: 1000000000,
         },
     },
-    etherscan: {
-        apiKey: {
-            opencampus: 'empty',
-            'edu-chain': 'empty',
+    verify: {
+        etherscan: {
+            apiKey: configVariable('ETHERSCAN_API_KEY'),
         },
-        customChains: [
-            {
-                network: 'base_sepolia',
-                chainId: 84532,
-                urls: {
-                    apiURL: 'https://api-sepolia.basescan.org/api',
-                    browserURL: 'sepolia.basescan.org',
-                },
-            },
-            {
-                network: 'opencampus',
-                chainId: 656476,
-                urls: {
-                    apiURL: 'https://edu-chain-testnet.blockscout.com/api',
-                    browserURL: 'https://edu-chain-testnet.blockscout.com',
-                },
-            },
-            {
-                network: 'edu-chain',
-                chainId: 41923,
-                urls: {
-                    apiURL: 'https://educhain.blockscout.com/api',
-                    browserURL: 'https://educhain.blockscout.com',
-                },
-            },
-        ],
+        blockscout: {
+            enabled: true,
+        },
     },
-};
+    chainDescriptors: {
+        84532: {
+            name: 'base_sepolia',
+            blockExplorers: {
+                etherscan: {
+                    name: 'Basescan',
+                    url: 'https://sepolia.basescan.org',
+                    apiUrl: 'https://api-sepolia.basescan.org/api',
+                },
+            },
+        },
+        656476: {
+            name: 'opencampus',
+            blockExplorers: {
+                blockscout: {
+                    name: 'EDU Chain Testnet Blockscout',
+                    url: 'https://edu-chain-testnet.blockscout.com',
+                    apiUrl: 'https://edu-chain-testnet.blockscout.com/api',
+                },
+            },
+        },
+        41923: {
+            name: 'edu-chain',
+            blockExplorers: {
+                blockscout: {
+                    name: 'EDU Chain Blockscout',
+                    url: 'https://educhain.blockscout.com',
+                    apiUrl: 'https://educhain.blockscout.com/api',
+                },
+            },
+        },
+    },
+});

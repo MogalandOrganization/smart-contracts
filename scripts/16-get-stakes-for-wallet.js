@@ -1,14 +1,15 @@
-const hre = require('hardhat');
-const fs = require('node:fs');
-const path = require('node:path');
+import hre from 'hardhat';
+import fs from 'node:fs';
+import path from 'node:path';
+const { ethers } = await hre.network.connect(process.env.HARDHAT_NETWORK);
 
 class StakeDetailsForWalletService {
     constructor() {
         // const rpcUrl = process.env.RPC_URL;
         const rpcUrl = process.env.RPC_PROVIDER_URL;
-        this.provider = new hre.ethers.JsonRpcProvider(rpcUrl);
+        this.provider = new ethers.JsonRpcProvider(rpcUrl);
 
-        this.stakingContract = new hre.ethers.Contract(
+        this.stakingContract = new ethers.Contract(
             process.env.STAKING_CONTRACT,
             [
                 'function getAllStakeIdsOfAddress(address _address, uint256 _start, uint256 _count) external view returns (uint256[] memory)',
@@ -24,7 +25,7 @@ class StakeDetailsForWalletService {
 
     async getStakeDetails(userWallet, walletIndex = 0) {
         // Get the contract factory and signer
-        const [signer] = await hre.ethers.getSigners(); // Get the default signer
+        const [signer] = await ethers.getSigners(); // Get the default signer
 
         // Attach to the deployed contract
         const staking = await this.stakingContract.connect(signer);
@@ -39,7 +40,7 @@ class StakeDetailsForWalletService {
             if (idx === 0) {
                 console.log(`[${walletIndex}]`, 'Owner:', owner);
             }
-            const amount = hre.ethers.formatUnits('' + principle, 18);
+            const amount = ethers.formatUnits('' + principle, 18);
             const creationDate = new Date(Number(created) * 1000);
             console.log('Stake offerId', Number(offerId), 'Principle:', amount, 'Created:', creationDate);
             stakesDetails.push({

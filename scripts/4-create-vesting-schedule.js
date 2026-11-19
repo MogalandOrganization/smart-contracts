@@ -1,7 +1,9 @@
 // cSpell:ignore moga
 
-const hre = require('hardhat');
-require('dotenv').config({ quiet: true });
+import hre from 'hardhat';
+import dotenv from 'dotenv';
+dotenv.config({ quiet: true });
+const { ethers } = await hre.network.connect(process.env.HARDHAT_NETWORK);
 
 async function main(argv) {
     // Validate inputs
@@ -18,7 +20,7 @@ async function main(argv) {
 
     const [vestingType, rawAmount, recipient] = argv;
 
-    if (!hre.ethers.isAddress(recipient)) {
+    if (!ethers.isAddress(recipient)) {
         console.error('Invalid recipient address');
         return;
     }
@@ -27,15 +29,15 @@ async function main(argv) {
         console.error('Invalid amount specified');
         return;
     }
-    const amount = hre.ethers.parseUnits(rawAmount, 18);
+    const amount = ethers.parseUnits(rawAmount, 18);
 
     // Get the contract address from command line or config
     const contractAddress = process.env.MOGA_CONTRACT;
     const vestingAddress = process.env.VESTING_CONTRACT;
 
     // Get the contract factories
-    const MogaToken = await hre.ethers.getContractFactory('MogaToken');
-    const Vesting = await hre.ethers.getContractFactory('MogaVesting');
+    const MogaToken = await ethers.getContractFactory('MogaToken');
+    const Vesting = await ethers.getContractFactory('MogaVesting');
 
     // Attach to the deployed contracts
     const mogaToken = await MogaToken.attach(contractAddress);
@@ -43,7 +45,7 @@ async function main(argv) {
 
     // Check the remaining tokens the spender is allowed to spend on the behalf of the owner
     const allowance = await mogaToken.allowance(process.env.PUBLIC_KEY, vestingAddress);
-    console.log('Current allowance:', hre.ethers.formatUnits(allowance, 18));
+    console.log('Current allowance:', ethers.formatUnits(allowance, 18));
     if (allowance < amount) {
         console.error('Insufficient allowance for vesting contract');
         return;

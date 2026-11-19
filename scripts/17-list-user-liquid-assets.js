@@ -17,9 +17,10 @@
 // Run:
 //   HARDHAT_NETWORK=edu-chain node scripts/17-list-user-liquid-assets.js 17-wallet-addresses.csv 25 50
 
-const hre = require('hardhat');
-const fs = require('node:fs');
-const path = require('node:path');
+import hre from 'hardhat';
+import fs from 'node:fs';
+import path from 'node:path';
+const { ethers } = await hre.network.connect(process.env.HARDHAT_NETWORK);
 
 const DECIMALS = 18;
 
@@ -29,14 +30,14 @@ class LiquidAssetsService {
         if (!contractAddress) {
             throw new Error('MOGA_CONTRACT environment variable is not set');
         }
-        if (!hre.ethers.isAddress(contractAddress)) {
+        if (!ethers.isAddress(contractAddress)) {
             throw new Error(`MOGA_CONTRACT is not a valid address: ${contractAddress}`);
         }
         this.contractAddress = contractAddress;
     }
 
     async init() {
-        const MogaToken = await hre.ethers.getContractFactory('MogaToken');
+        const MogaToken = await ethers.getContractFactory('MogaToken');
         // Attach without a signer: balanceOf is a view call, no key needed.
         this.mogaToken = MogaToken.attach(this.contractAddress);
         return this;
@@ -44,7 +45,7 @@ class LiquidAssetsService {
 
     async getBalance(address) {
         const raw = await this.mogaToken.balanceOf(address);
-        return hre.ethers.formatUnits(raw, DECIMALS);
+        return ethers.formatUnits(raw, DECIMALS);
     }
 }
 
@@ -100,7 +101,7 @@ async function main(argv) {
     const rows = [['walletAddress', 'mogaBalance']];
     for (let idx = startIndex; idx < endIndex; idx++) {
         const address = addresses[idx];
-        if (!hre.ethers.isAddress(address)) {
+        if (!ethers.isAddress(address)) {
             console.warn(`[${idx}] skipping invalid address: ${address}`);
             rows.push([address, 'INVALID_ADDRESS']);
             continue;

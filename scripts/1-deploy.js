@@ -1,14 +1,17 @@
 // cSpell:ignore moga
 
-const hre = require('hardhat');
-require('dotenv').config({ quiet: true });
+import hre from 'hardhat';
+import dotenv from 'dotenv';
+dotenv.config({ quiet: true });
+const { ethers } = await hre.network.connect(process.env.HARDHAT_NETWORK);
 
 async function main(argv) {
     // Get the contract references
-    const Token = await hre.ethers.getContractFactory('MogaToken');
-    const Staking = await hre.ethers.getContractFactory('MogaStaking');
-    const Vesting = await hre.ethers.getContractFactory('MogaVesting');
-    [deployerAcc, mogaAdmin, addr1, addr2, addr3] = await hre.ethers.getSigners();
+    const Token = await ethers.getContractFactory('MogaToken');
+    const Staking = await ethers.getContractFactory('MogaStaking');
+    const Vesting = await ethers.getContractFactory('MogaVesting');
+    let deployerAcc, mogaAdmin, addr1, addr2, addr3; // declared explicitly: ESM is strict, implicit globals throw
+    [deployerAcc, mogaAdmin, addr1, addr2, addr3] = await ethers.getSigners();
 
     // Publish the MOGA token contract
     const mogaToken = await Token.deploy(process.env.PUBLIC_KEY, 1000000000);

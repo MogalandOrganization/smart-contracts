@@ -1,7 +1,9 @@
 // cSpell:ignore moga
 
-const hre = require('hardhat');
-require('dotenv').config({ quiet: true });
+import hre from 'hardhat';
+import dotenv from 'dotenv';
+dotenv.config({ quiet: true });
+const { ethers } = await hre.network.connect(process.env.HARDHAT_NETWORK);
 
 async function main(argv) {
     // Validate inputs
@@ -16,17 +18,17 @@ async function main(argv) {
         console.error('Invalid amount specified');
         return;
     }
-    const amount = hre.ethers.parseUnits(rawAmount, 18);
+    const amount = ethers.parseUnits(rawAmount, 18);
 
     // Get the contract address from command line or config
     const contractAddress = process.env.MOGA_CONTRACT;
     const stakingAddress = process.env.STAKING_CONTRACT;
 
     // Get the contract factory and signer
-    const [signer] = await hre.ethers.getSigners(); // Get the default signer
+    const [signer] = await ethers.getSigners(); // Get the default signer
     console.log('Signer address:', signer.address);
-    const MogaToken = await hre.ethers.getContractFactory('MogaToken');
-    const Staking = await hre.ethers.getContractFactory('MogaStaking');
+    const MogaToken = await ethers.getContractFactory('MogaToken');
+    const Staking = await ethers.getContractFactory('MogaStaking');
 
     // Attach to the deployed contract
     const mogaToken = await MogaToken.attach(contractAddress).connect(signer);
@@ -43,7 +45,7 @@ async function main(argv) {
         signer.address,
         // process.env.MOGA_CONTRACT
     );
-    console.log('Available supply:', hre.ethers.formatUnits(senderBalance, 18));
+    console.log('Available supply:', ethers.formatUnits(senderBalance, 18));
     if (senderBalance < amount) {
         console.error('Insufficient balance for transfer');
         return;
@@ -52,7 +54,7 @@ async function main(argv) {
     // Check the remaining tokens the spender is allowed to spend on the behalf of the owner
     try {
         const initialAllowance = await mogaToken.allowance(mogaOwner, stakingAddress);
-        console.log('Amount the staking contract can spend:', hre.ethers.formatUnits(initialAllowance, 18));
+        console.log('Amount the staking contract can spend:', ethers.formatUnits(initialAllowance, 18));
     } catch (e) {
         console.log('Error:', e);
     }
@@ -66,7 +68,7 @@ async function main(argv) {
 
     // Check the remaining tokens the spender is allowed to spend on the behalf of the owner
     const finalAllowance = await mogaToken.allowance(mogaOwner, stakingAddress);
-    console.log('Amount the staking contract can spend:', hre.ethers.formatUnits(finalAllowance, 18));
+    console.log('Amount the staking contract can spend:', ethers.formatUnits(finalAllowance, 18));
 
     // Transfer tokens to the staking contract
     if (finalAllowance !== BigInt(0)) {
@@ -80,15 +82,15 @@ async function main(argv) {
 
         // Check the total supply of the token
         const totalSupply = await mogaToken.totalSupply();
-        console.log('Total supply:', hre.ethers.formatUnits(totalSupply, 18));
+        console.log('Total supply:', ethers.formatUnits(totalSupply, 18));
 
         // Check the MOGA balance of the staking contract
         const stakingBalance = await mogaToken.balanceOf(stakingAddress);
-        console.log('Staking contract balance:', hre.ethers.formatUnits(stakingBalance, 18));
+        console.log('Staking contract balance:', ethers.formatUnits(stakingBalance, 18));
 
         // Check the MOGA balance of the owner
         const ownerBalance = await mogaToken.balanceOf(mogaOwner);
-        console.log('Owner balance:', hre.ethers.formatUnits(ownerBalance, 18));
+        console.log('Owner balance:', ethers.formatUnits(ownerBalance, 18));
     }
 }
 

@@ -1,7 +1,9 @@
 // cSpell:ignore moga
 
-const hre = require('hardhat');
-require('dotenv').config({ quiet: true });
+import hre from 'hardhat';
+import dotenv from 'dotenv';
+dotenv.config({ quiet: true });
+const { ethers } = await hre.network.connect(process.env.HARDHAT_NETWORK);
 
 async function main(argv) {
     // Validate inputs
@@ -17,7 +19,7 @@ async function main(argv) {
         console.error('Invalid amount reward rate. It should be a number between 1 and 20.');
         return;
     }
-    rate = hre.ethers.parseUnits((rate / 100).toString(), 18);
+    rate = ethers.parseUnits((rate / 100).toString(), 18);
     fee = parseInt(fee, 10);
     if (isNaN(fee) || fee < 1 || fee > 20) {
         console.error('Invalid amount cancellation fee. It should be a number between 1 and 20.');
@@ -29,9 +31,9 @@ async function main(argv) {
     const stakingAddress = process.env.STAKING_CONTRACT;
 
     // Get the contract factory and signer
-    const [signer] = await hre.ethers.getSigners(); // Get the default signer
+    const [signer] = await ethers.getSigners(); // Get the default signer
     console.log('Signer address:', signer.address);
-    const Staking = await hre.ethers.getContractFactory('MogaStaking');
+    const Staking = await ethers.getContractFactory('MogaStaking');
 
     // Attach to the deployed contract
     const staking = await Staking.attach(stakingAddress).connect(signer);

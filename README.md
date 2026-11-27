@@ -10,6 +10,8 @@ Maximum Supply: 1,000,000,000
 
 Decimal: 18 -> 1 MOGA is represented as 1000000000000000000 in the code, allowing standard ETH/ERC20 behavior with decimals in UI
 
+**Important announcement:** MOGA is moving to Base. Read the [details](/docs/announcement.md).
+
 # Commands
 
 Rename .env copy file to .env and fill out details. I use an Infura API key since alchemy is buggy for me fyi

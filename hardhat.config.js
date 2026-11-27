@@ -28,7 +28,8 @@ export default defineConfig({
         // EDUCHAIN / OPENCAMPUS MAINNET
         'edu-chain': {
             type: 'http',
-            url: 'https://rpc.edu-chain.raas.gelato.cloud',
+            // The former Gelato host (rpc.edu-chain.raas.gelato.cloud) no longer resolves in DNS.
+            url: process.env.RPC_PROVIDER_URL ?? 'https://rpc.educhain.xyz',
             accounts: [configVariable('PRIVATE_KEY')],
             chainId: 41923, // '0xa3c3', // 41923
             gasPrice: 1000000000,
